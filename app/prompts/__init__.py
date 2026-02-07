@@ -1,0 +1,19 @@
+"""
+Agent prompt templates for the Digital Twin AI system.
+"""
+
+from .templates import (
+    GENERAL_AGENT_PROMPT,
+    PROFESSIONAL_AGENT_PROMPT,
+    COMMUNICATION_AGENT_PROMPT,
+    KNOWLEDGE_AGENT_PROMPT,
+    DECISION_AGENT_PROMPT,
+)
+
+__all__ = [
+    "GENERAL_AGENT_PROMPT",
+    "PROFESSIONAL_AGENT_PROMPT",
+    "COMMUNICATION_AGENT_PROMPT",
+    "KNOWLEDGE_AGENT_PROMPT",
+    "DECISION_AGENT_PROMPT",
+]

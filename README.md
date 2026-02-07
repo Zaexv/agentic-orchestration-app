@@ -4,6 +4,7 @@
 > Built with LangChain, LangGraph, and FastAPI
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![UV](https://img.shields.io/badge/uv-managed-blueviolet.svg)](https://docs.astral.sh/uv/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
 [![LangChain](https://img.shields.io/badge/LangChain-latest-orange.svg)](https://python.langchain.com/)
 
@@ -30,6 +31,11 @@ This project implements an AI-powered digital twin with **5 specialized agents**
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+- **Python 3.11+**
+- **UV** (Fast Python package manager) - [Install UV](https://docs.astral.sh/uv/)
+
 ### 1. Clone & Setup
 
 ```bash
@@ -37,12 +43,8 @@ This project implements an AI-powered digital twin with **5 specialized agents**
 git clone https://github.com/Zaexv/agentic-orchestration-app.git
 cd agentic-orchestration-app
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Sync dependencies with UV (creates .venv automatically)
+uv sync
 ```
 
 ### 2. Configure Environment
@@ -58,11 +60,11 @@ OPENAI_API_KEY=your_key_here
 ### 3. Run the Server
 
 ```bash
-# Using Makefile
-make run-local
+# Using UV
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# Or directly with uvicorn
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Or using Makefile
+make run-local
 ```
 
 🎉 **Visit:** http://localhost:8000/docs for interactive API documentation
@@ -139,6 +141,7 @@ agentic-orchestration-app/
 ```bash
 # Run all tests
 make test
+# or: uv run pytest
 
 # Run specific test suites
 make test-state         # State management tests
@@ -147,7 +150,8 @@ make test-router        # Router tests
 make test-api          # API tests
 
 # Check test coverage
-pytest --cov=app tests/
+make test-coverage
+# or: uv run pytest --cov=app tests/
 ```
 
 **Current Status:** 89/89 tests passing ✅
@@ -221,32 +225,54 @@ See [`project_plan.md`](project_plan.md) for detailed roadmap.
 
 ## 💻 Development
 
+### Using UV (Recommended)
+
+```bash
+# Sync dependencies
+uv sync
+
+# Add a new dependency
+uv add package-name
+
+# Add a dev dependency
+uv add --dev package-name
+
+# Update dependencies
+uv lock --upgrade
+
+# Run commands
+uv run python script.py
+uv run pytest
+uv run uvicorn app.main:app
+```
+
 ### Using Makefile
 
 ```bash
 make help           # Show all commands
-make install        # Install dependencies
+make sync           # Sync dependencies
 make run-local      # Run development server
 make test           # Run all tests
 make lint           # Run linters
 make format         # Format code
+make clean          # Clean generated files
 ```
 
 ### Manual Commands
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Sync dependencies
+uv sync
 
 # Run server
-uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload
 
 # Run tests
-pytest
+uv run pytest
 
 # Format code
-black app/ tests/
-isort app/ tests/
+uv run black app/ tests/
+uv run isort app/ tests/
 ```
 
 ---

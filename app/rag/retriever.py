@@ -33,7 +33,8 @@ class Retriever:
         query: str,
         domain: str,
         top_k: int = 3,
-        metadata_filter: Optional[dict] = None
+        metadata_filter: Optional[dict] = None,
+        include_shared: bool = True
     ) -> List[RetrievedDocument]:
         """
         Retrieve relevant documents for a query.
@@ -43,36 +44,59 @@ class Retriever:
             domain: Agent domain to search in
             top_k: Number of documents to retrieve
             metadata_filter: Optional metadata filters
+            include_shared: If True, also search shared memory (default: True)
             
         Returns:
             List of retrieved documents
         """
-        # Check if collection has documents
+        all_documents = []
+        
+        # Query agent-specific domain
         count = self.vector_store.count_documents(domain)
-        if count == 0:
-            return []
+        if count > 0:
+            results = self.vector_store.query(
+                domain=domain,
+                query_text=query,
+                n_results=top_k,
+                metadata_filter=metadata_filter
+            )
+            
+            # Parse results from agent domain
+            if results['documents'] and len(results['documents']) > 0:
+                for i in range(len(results['documents'][0])):
+                    doc = RetrievedDocument(
+                        content=results['documents'][0][i],
+                        score=results['distances'][0][i] if 'distances' in results else 0.0,
+                        metadata=results['metadatas'][0][i] if results['metadatas'] else {},
+                        domain=domain
+                    )
+                    all_documents.append(doc)
         
-        # Query vector store
-        results = self.vector_store.query(
-            domain=domain,
-            query_text=query,
-            n_results=top_k,
-            metadata_filter=metadata_filter
-        )
-        
-        # Parse results
-        documents = []
-        if results['documents'] and len(results['documents']) > 0:
-            for i in range(len(results['documents'][0])):
-                doc = RetrievedDocument(
-                    content=results['documents'][0][i],
-                    score=results['distances'][0][i] if 'distances' in results else 0.0,
-                    metadata=results['metadatas'][0][i] if results['metadatas'] else {},
-                    domain=domain
+        # Query shared memory if enabled
+        if include_shared:
+            shared_count = self.vector_store.count_documents("shared")
+            if shared_count > 0:
+                shared_results = self.vector_store.query(
+                    domain="shared",
+                    query_text=query,
+                    n_results=top_k,
+                    metadata_filter=metadata_filter
                 )
-                documents.append(doc)
+                
+                # Parse results from shared memory
+                if shared_results['documents'] and len(shared_results['documents']) > 0:
+                    for i in range(len(shared_results['documents'][0])):
+                        doc = RetrievedDocument(
+                            content=shared_results['documents'][0][i],
+                            score=shared_results['distances'][0][i] if 'distances' in shared_results else 0.0,
+                            metadata=shared_results['metadatas'][0][i] if shared_results['metadatas'] else {},
+                            domain="shared"
+                        )
+                        all_documents.append(doc)
         
-        return documents
+        # Sort by score (lower is better for distance) and return top_k
+        all_documents.sort(key=lambda x: x.score)
+        return all_documents[:top_k]
     
     def format_context(self, documents: List[RetrievedDocument]) -> str:
         """
@@ -91,7 +115,8 @@ class Retriever:
         
         for i, doc in enumerate(documents, 1):
             source = doc.metadata.get('source', 'Unknown')
-            context_parts.append(f"\n[Document {i} - Source: {source}]")
+            memory_type = "Shared Memory" if doc.domain == "shared" else f"{doc.domain.title()} Domain"
+            context_parts.append(f"\n[Document {i} - {memory_type} - Source: {source}]")
             context_parts.append(doc.content)
         
         return "\n".join(context_parts)
@@ -101,7 +126,8 @@ class Retriever:
         query: str,
         domain: str,
         top_k: int = 3,
-        metadata_filter: Optional[dict] = None
+        metadata_filter: Optional[dict] = None,
+        include_shared: bool = True
     ) -> str:
         """
         Retrieve documents and format them as context string.
@@ -113,6 +139,7 @@ class Retriever:
             domain: Agent domain
             top_k: Number of documents to retrieve
             metadata_filter: Optional metadata filters
+            include_shared: If True, also search shared memory (default: True)
             
         Returns:
             Formatted context string
@@ -121,7 +148,8 @@ class Retriever:
             query=query,
             domain=domain,
             top_k=top_k,
-            metadata_filter=metadata_filter
+            metadata_filter=metadata_filter,
+            include_shared=include_shared
         )
         
         return self.format_context(documents)

@@ -51,11 +51,15 @@ def knowledge_agent(state: AgentState) -> AgentState:
     if context:
         system_prompt += f"\n\n{context}\n\nUse the personal knowledge above to provide accurate, personalized responses."
     
-    # Prepare messages for LLM
-    llm_messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_query}
-    ]
+    # Build conversation history for LLM (include previous turns)
+    llm_messages = [{"role": "system", "content": system_prompt}]
+    
+    # Add conversation history (last 10 messages for context)
+    for msg in messages[-10:]:
+        llm_messages.append({
+            "role": msg.role,
+            "content": msg.content
+        })
     
     # Get response from LLM
     response = llm.invoke(llm_messages)

@@ -32,11 +32,22 @@ class ChatRequest(BaseModel):
     )
     
     max_iterations: int = Field(
-        10,
-        description="Maximum iterations for agent execution",
+        5,
+        description="Maximum iterations for agent execution (enables multi-turn reasoning)",
         ge=1,
-        le=20
+        le=10
     )
+
+
+class IterationDetail(BaseModel):
+    """Detail about what happened in an iteration"""
+    
+    iteration: int = Field(..., description="Iteration number")
+    agent: str = Field(..., description="Agent that executed")
+    action: str = Field(..., description="What happened")
+    confidence: float = Field(..., description="Confidence score")
+    reasoning: Optional[str] = Field(None, description="Why this happened")
+    timestamp: datetime
 
 
 class AgentExecution(BaseModel):
@@ -68,7 +79,12 @@ class ChatResponse(BaseModel):
     
     routing_history: list[AgentExecution] = Field(
         default_factory=list,
-        description="History of agent executions"
+        description="History of agent executions (DEPRECATED - use iteration_details)"
+    )
+    
+    iteration_details: list[IterationDetail] = Field(
+        default_factory=list,
+        description="Detailed log of what happened in each iteration"
     )
     
     iterations: int = Field(..., description="Number of iterations taken")

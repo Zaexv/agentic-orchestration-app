@@ -138,12 +138,39 @@ function App() {
 
       const data = await response.json()
       
+      // Build thinking steps from iteration details
       const steps = [
         { step: '🎯 Query Analysis', detail: 'Analyzed user intent and context', done: true },
-        { step: `🤖 Agent Selection: ${data.agent_used}`, detail: data.routing_history[0]?.reasoning || 'Selected best agent', done: true },
+        { step: `🤖 Final Agent: ${data.agent_used}`, detail: `${data.iterations} iteration(s) completed`, done: true },
         { step: `📊 Confidence: ${(data.confidence * 100).toFixed(0)}%`, detail: 'Routing confidence score', done: true },
         { step: `⚡ Processing Time: ${data.processing_time_ms?.toFixed(0)}ms`, detail: 'Total execution time', done: true },
       ]
+      
+      // Add iteration details if present
+      if (data.iteration_details && data.iteration_details.length > 0) {
+        // Group by iteration to show the flow
+        const iterations = {}
+        data.iteration_details.forEach(d => {
+          if (!iterations[d.iteration]) iterations[d.iteration] = []
+          iterations[d.iteration].push(d)
+        })
+        
+        // Build a summary of the iteration flow
+        const iterationSteps = Object.entries(iterations).map(([iter, details]) => {
+          const routing = details.find(d => d.action.startsWith('Routed to'))
+          const agent = routing?.action.replace('Routed to ', '') || 'unknown'
+          const conf = routing?.confidence ? `${(routing.confidence * 100).toFixed(0)}%` : ''
+          return `Iter ${iter}: ${agent} (${conf})`
+        })
+        
+        if (iterationSteps.length > 1) {
+          steps.splice(1, 0, { 
+            step: '🔄 Multi-Iteration Processing', 
+            detail: iterationSteps.join(' → '), 
+            done: true 
+          })
+        }
+      }
       
       setThinkingSteps(steps)
 
@@ -154,10 +181,10 @@ function App() {
           agent: data.agent_used,
           confidence: data.confidence,
           trace: {
-            reasoning: data.routing_history[0]?.reasoning,
+            reasoning: data.iteration_details?.[0]?.reasoning || 'No details',
             processingTime: data.processing_time_ms,
             iterations: data.iterations,
-            routingHistory: data.routing_history
+            iterationDetails: data.iteration_details || []
           }
         }])
         setThinkingSteps([])
@@ -253,7 +280,7 @@ function App() {
             <div className="logo-text">
               <span className="logo-title">AI Digital Twin</span>
               <div className="orchestration-selector">
-                <PatternIcon size={12} />
+                <PatternIcon size={14} />
                 <select 
                   value={orchestrationPattern}
                   onChange={(e) => setOrchestrationPattern(e.target.value)}
@@ -261,7 +288,7 @@ function App() {
                 >
                   {ORCHESTRATION_PATTERNS.map(pattern => (
                     <option key={pattern.id} value={pattern.id}>
-                      {pattern.name} Orchestration
+                      {pattern.name}
                     </option>
                   ))}
                 </select>
@@ -274,12 +301,14 @@ function App() {
         <div className="chat-container">
           {messages.length === 0 ? (
             <div className="empty-state">
-              <Logo3D size={80} />
+              <div className="logo-3d-container">
+                <Logo3D size={80} />
+              </div>
               <h2>AI Digital Twin System</h2>
               <div className="system-info">
                 <div className="info-badge">
                   <PatternIcon size={14} />
-                  <span>{currentPattern?.name} Orchestration Pattern</span>
+                  <span>{currentPattern?.name} Orchestration</span>
                 </div>
                 <div className="info-badge">
                   <Zap size={14} />
@@ -292,7 +321,9 @@ function App() {
               <div className="agents-grid">
                 {AGENTS.map(agent => (
                   <div key={agent.id} className="agent-card">
-                    <Agent3D agentId={agent.id} size={100} />
+                    <div className="agent-3d-container">
+                      <Agent3D agentId={agent.id} size={100} />
+                    </div>
                     <h3 className="agent-name">{agent.name}</h3>
                     <p className="agent-description">{agent.description}</p>
                     <div className="agent-specialties">
@@ -304,7 +335,7 @@ function App() {
                 ))}
               </div>
 
-              <p className="start-hint">Type a message below - the router will select the best agent for you</p>
+              <p className="start-hint">Type a message below to start chatting with your AI agents</p>
             </div>
           ) : (
             <div className="messages">
@@ -463,18 +494,27 @@ function Message({ message }) {
             )}
             {message.trace.iterations && (
               <div className="trace-section">
-                <div className="trace-label">🔄 Iterations</div>
+                <div className="trace-label">�� Iterations</div>
                 <div className="trace-value">{message.trace.iterations}</div>
               </div>
             )}
-            {message.trace.routingHistory && message.trace.routingHistory.length > 0 && (
+            {message.trace.iterationDetails && message.trace.iterationDetails.length > 0 && (
               <div className="trace-section">
-                <div className="trace-label">📋 Routing History</div>
-                <div className="trace-routing">
-                  {message.trace.routingHistory.map((r, i) => (
-                    <div key={i} className="routing-item">
-                      <span className="routing-agent">{r.agent_name}</span>
-                      <span className="routing-confidence">{(r.confidence * 100).toFixed(0)}%</span>
+                <div className="trace-label">🔄 Iteration Log</div>
+                <div className="trace-iterations">
+                  {message.trace.iterationDetails.map((detail, i) => (
+                    <div key={i} className="iteration-item">
+                      <div className="iteration-header">
+                        <span className="iteration-number">#{detail.iteration}</span>
+                        <span className="iteration-agent">{detail.agent}</span>
+                        {detail.confidence > 0 && (
+                          <span className="iteration-confidence">{(detail.confidence * 100).toFixed(0)}%</span>
+                        )}
+                      </div>
+                      <div className="iteration-action">{detail.action}</div>
+                      {detail.reasoning && (
+                        <div className="iteration-reasoning">{detail.reasoning}</div>
+                      )}
                     </div>
                   ))}
                 </div>

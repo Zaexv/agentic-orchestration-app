@@ -25,7 +25,8 @@ AGENT_DOMAINS = [
     "communication", 
     "knowledge",
     "decision",
-    "general"
+    "general",
+    "shared"  # Shared memory across all agents
 ]
 
 
@@ -33,7 +34,7 @@ class VectorStoreManager:
     """
     Manages vector stores for all agent domains.
     
-    Each agent gets its own ChromaDB collection for domain isolation.
+    Now includes a shared memory collection accessible by all agents.
     """
     
     def __init__(self, persist_directory: Optional[str] = None):

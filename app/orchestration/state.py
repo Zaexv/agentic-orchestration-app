@@ -35,6 +35,16 @@ class RetrievedDocument(BaseModel):
     agent_domain: str = Field(..., description="Which agent's domain (professional, communication, etc)")
 
 
+class IterationLog(BaseModel):
+    """Log entry for each iteration"""
+    iteration: int = Field(..., description="Iteration number")
+    agent: str = Field(..., description="Agent that executed")
+    action: str = Field(..., description="What happened in this iteration")
+    confidence: float = Field(..., description="Routing confidence")
+    reasoning: Optional[str] = Field(None, description="Why this happened")
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
 class AgentState(TypedDict):
     """
     Central state object shared across all agents in the graph.
@@ -52,6 +62,9 @@ class AgentState(TypedDict):
     next_agent: Optional[str]  # Next agent to route to
     routing_history: Annotated[list[RoutingDecision], add]  # History of routing decisions
     routing_confidence: float  # Confidence of current routing decision
+    
+    # Iteration Tracking (accumulated)
+    iteration_log: Annotated[list[IterationLog], add]  # What happened in each iteration
     
     # Retrieved Context (replaced per query)
     retrieved_docs: list[RetrievedDocument]  # Documents from RAG
@@ -80,7 +93,7 @@ def create_initial_state(
     user_query: str,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
-    max_iterations: int = 10
+    max_iterations: int = 5
 ) -> AgentState:
     """
     Create initial state for a new conversation turn.
@@ -105,6 +118,9 @@ def create_initial_state(
         next_agent=None,
         routing_history=[],
         routing_confidence=0.0,
+        
+        # Iteration tracking
+        iteration_log=[],
         
         # RAG
         retrieved_docs=[],

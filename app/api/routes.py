@@ -115,15 +115,15 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
     """
     Main chat endpoint with agent routing, execution, and persistence.
     
+    Now uses the LangGraph workflow for multi-iteration support!
+    
     Flow:
     1. Get or create user and conversation
     2. Load conversation history if existing conversation
-    3. Create initial state
-    4. Add user message
-    5. Route to appropriate agent
-    6. Execute agent
-    7. Save messages to database
-    8. Return response
+    3. Create initial state with history
+    4. Run through LangGraph workflow (enables multi-iteration)
+    5. Save messages to database
+    6. Return response
     """
     start_time = time.time()
     
@@ -151,26 +151,17 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
         db_messages = ConversationService.get_conversation_messages(db, conversation.id)
         history_messages = ConversationService.messages_to_state_format(db_messages)
     
-    # Create initial state directly
-    now = datetime.now()
-    state: AgentState = {
-        "messages": history_messages + [Message(role="user", content=request.message, timestamp=now.isoformat())],
-        "current_agent": "router",
-        "next_agent": None,
-        "routing_history": [],
-        "routing_confidence": 0.0,
-        "retrieved_docs": [],
-        "rag_query": None,
-        "user_id": request.user_id,
-        "session_id": request.session_id or f"session_{time.time()}",
-        "user_query": request.message,
-        "iterations": 0,
-        "max_iterations": request.max_iterations,
-        "should_continue": True,
-        "metadata": {},
-        "created_at": now,
-        "updated_at": now,
-    }
+    # Create initial state for workflow
+    state = create_initial_state(
+        user_query=request.message,
+        user_id=request.user_id,
+        session_id=request.session_id,
+        max_iterations=request.max_iterations
+    )
+    
+    # Add conversation history to state
+    if history_messages:
+        state["messages"] = history_messages + state["messages"]
     
     # Save user message to database
     ConversationService.add_message(
@@ -180,35 +171,19 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
         content=request.message
     )
     
-    # Use LLM-based router (Phase 4)
-    target_agent, confidence, reasoning = router_agent_with_fallback(request.message)
-    
-    # Add routing decision
-    routing_decision = RoutingDecision(
-        target_agent=target_agent,
-        confidence=confidence,
-        reasoning=reasoning,
-        timestamp=datetime.now().isoformat()
-    )
-    state["routing_history"].append(routing_decision)
-    state["next_agent"] = target_agent
-    state["routing_confidence"] = confidence
-    state["iterations"] += 1
-    
-    # Execute the selected agent
+    # Run through LangGraph workflow (enables multi-iteration!)
     try:
-        agent_func = AGENT_REGISTRY.get(target_agent, general_agent)
-        state = agent_func(state)
+        final_state = run_workflow(state)
     except Exception as e:
-        # Fallback to general agent on error
-        print(f"Error with {target_agent} agent: {e}")
-        import traceback
-        traceback.print_exc()
-        state = general_agent(state)
-        target_agent = "general"
+        raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
     
-    # Get the agent's response (last message)
-    agent_response = state["messages"][-1].content
+    # Get the agent's response (last message from workflow)
+    agent_response = final_state["messages"][-1].content
+    
+    # Get routing info from workflow
+    latest_routing = final_state["routing_history"][-1] if final_state["routing_history"] else None
+    target_agent = latest_routing.target_agent if latest_routing else "general"
+    confidence = latest_routing.confidence if latest_routing else 0.0
     
     # Calculate processing time
     processing_time = (time.time() - start_time) * 1000  # Convert to ms
@@ -224,23 +199,37 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
         processing_time_ms=processing_time
     )
     
-    # Build response
+    # Build response with iteration details
+    # Deduplicate iteration logs based on iteration + agent combo
+    from app.api.models import IterationDetail
+    
+    seen_logs = set()
+    unique_logs = []
+    for log in final_state.get("iteration_log", []):
+        key = (log.iteration, log.agent, log.action)
+        if key not in seen_logs:
+            seen_logs.add(key)
+            unique_logs.append(log)
+    
     return ChatResponse(
         response=agent_response,
         agent_used=target_agent,
         confidence=confidence,
-        session_id=state["session_id"],
+        session_id=final_state["session_id"],
         conversation_id=conversation.id,
-        routing_history=[
-            AgentExecution(
-                agent_name=rd.target_agent,
-                confidence=rd.confidence,
-                reasoning=rd.reasoning,
-                timestamp=rd.timestamp,
+        routing_history=[],  # Empty - deprecated
+        iteration_details=[
+            IterationDetail(
+                iteration=log.iteration,
+                agent=log.agent,
+                action=log.action,
+                confidence=log.confidence,
+                reasoning=log.reasoning,
+                timestamp=log.timestamp
             )
-            for rd in state["routing_history"]
+            for log in unique_logs
         ],
-        iterations=state["iterations"],
+        iterations=final_state["iterations"],
         processing_time_ms=processing_time,
     )
 

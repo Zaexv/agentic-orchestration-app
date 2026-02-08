@@ -28,11 +28,32 @@ def router_node(state: AgentState) -> AgentState:
     Returns:
         Updated state with routing decision
     """
+    from app.orchestration.state import IterationLog
+    from datetime import datetime
+    
     # Get latest user message
     latest_message = state["messages"][-1].content
     
     # Route using LLM with fallback
     agent_name, confidence, reasoning = router_agent_with_fallback(latest_message)
+    
+    # Log this routing decision (only once per iteration)
+    current_iter = state["iterations"] + 1
+    # Check if we already logged routing for this iteration
+    already_logged = any(
+        log.iteration == current_iter and log.agent == "router"
+        for log in state["iteration_log"]
+    )
+    if not already_logged:
+        log_entry = IterationLog(
+            iteration=current_iter,
+            agent="router",
+            action=f"Routed to {agent_name}",
+            confidence=confidence,
+            reasoning=reasoning,
+            timestamp=datetime.now()
+        )
+        state["iteration_log"].append(log_entry)
     
     # Update routing information in state
     state = update_routing(state, agent_name, confidence, reasoning)
@@ -68,9 +89,13 @@ def should_continue(state: AgentState) -> Literal["continue", "end"]:
     """
     Conditional edge function that determines if workflow should continue or end.
     
+    Multi-turn is enabled: Agents can iterate multiple times to refine responses,
+    gather more information, or perform complex multi-step reasoning.
+    
     Checks:
     - Max iterations reached
     - should_continue flag
+    - Agent confidence threshold
     
     Args:
         state: Current agent state
@@ -78,22 +103,91 @@ def should_continue(state: AgentState) -> Literal["continue", "end"]:
     Returns:
         "continue" to loop back to router, "end" to finish
     """
+    from app.orchestration.state import IterationLog
+    from datetime import datetime
+    
     # Check if max iterations reached
     if state["iterations"] >= state["max_iterations"]:
+        log_entry = IterationLog(
+            iteration=state["iterations"],
+            agent="workflow",
+            action="Stopped: Max iterations reached",
+            confidence=0.0,
+            reasoning=f"Reached max iterations ({state['max_iterations']})",
+            timestamp=datetime.now()
+        )
+        state["iteration_log"].append(log_entry)
         return "end"
     
     # Check should_continue flag
     if not state["should_continue"]:
+        log_entry = IterationLog(
+            iteration=state["iterations"],
+            agent="workflow",
+            action="Stopped: should_continue=False",
+            confidence=0.0,
+            reasoning="Agent signaled to stop",
+            timestamp=datetime.now()
+        )
+        state["iteration_log"].append(log_entry)
         return "end"
     
-    # For now, always end after one agent execution (single-turn)
-    # In Phase 6+, we'll enable multi-turn by checking for follow-up questions
+    # Check if we have a final response
+    if state.get("final_response"):
+        return "end"
+    
+    # For low confidence (<70%), allow one retry with different agent
+    if state["routing_history"]:
+        latest_routing = state["routing_history"][-1]
+        if latest_routing.confidence < 0.7 and state["iterations"] < 2:
+            log_entry = IterationLog(
+                iteration=state["iterations"],
+                agent="workflow",
+                action="Continuing: Low confidence retry",
+                confidence=latest_routing.confidence,
+                reasoning=f"Confidence {(latest_routing.confidence*100):.0f}% < 70%, retrying",
+                timestamp=datetime.now()
+            )
+            state["iteration_log"].append(log_entry)
+            return "continue"
+    
+    # Allow up to 3 iterations for complex queries
+    if state["iterations"] < 3:
+        # Check if the last message suggests more work needed
+        if state["messages"]:
+            last_message = state["messages"][-1].content.lower()
+            # Continue if agent is asking questions or needs clarification
+            if any(indicator in last_message for indicator in [
+                "let me", "i'll also", "additionally", "furthermore",
+                "i can also", "would you like", "shall i"
+            ]):
+                log_entry = IterationLog(
+                    iteration=state["iterations"],
+                    agent="workflow",
+                    action="Continuing: Agent signaled more work",
+                    confidence=0.0,
+                    reasoning="Detected continuation keywords in response",
+                    timestamp=datetime.now()
+                )
+                state["iteration_log"].append(log_entry)
+                return "continue"
+    
+    # Default: end after processing
+    log_entry = IterationLog(
+        iteration=state["iterations"],
+        agent="workflow",
+        action="Stopped: Workflow complete",
+        confidence=0.0,
+        reasoning="No continuation conditions met",
+        timestamp=datetime.now()
+    )
+    state["iteration_log"].append(log_entry)
     return "end"
 
 
 def agent_wrapper(agent_func):
     """
-    Wrapper for agent functions to increment iteration counter.
+    Wrapper for agent functions to increment iteration counter and log execution.
     
     Args:
         agent_func: The agent function to wrap
@@ -102,8 +196,25 @@ def agent_wrapper(agent_func):
         Wrapped agent function
     """
     def wrapped(state: AgentState) -> AgentState:
+        from app.orchestration.state import IterationLog, increment_iteration
+        from datetime import datetime
+        
+        agent_name = agent_func.__name__.replace('_agent', '')
+        
         # Execute the agent
         state = agent_func(state)
+        
+        # Log agent execution
+        response_preview = state["messages"][-1].content[:100] if state["messages"] else "No response"
+        log_entry = IterationLog(
+            iteration=state["iterations"] + 1,
+            agent=agent_name,
+            action="Generated response",
+            confidence=state["routing_confidence"],
+            reasoning=f"Response: {response_preview}...",
+            timestamp=datetime.now()
+        )
+        state["iteration_log"].append(log_entry)
         
         # Increment iteration counter
         state = increment_iteration(state)

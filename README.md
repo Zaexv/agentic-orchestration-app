@@ -28,7 +28,11 @@ This project implements a **production-ready AI-powered digital twin** with **5 
 - 🔍 **RAG System** - Retrieval-Augmented Generation with ChromaDB
 - 💾 **Persistent Conversations** - SQLite database with full history
 - 🔄 **Multi-turn Conversations** - Continue conversations across sessions
-- 🎨 **Modern UI** - React 19 + Vite with vaporwave theme
+- 🎨 **Modern UI** - React 19 + Vite with dark space theme
+- 🎭 **3D Agent Avatars** - Unique cartoon-style 3D faces for each agent
+- 🔍 **AI Thinking Visualization** - Real-time agent reasoning and trace display
+- 📝 **Rich Markdown** - Code highlighting, tables, and formatting
+- 🎛️ **Orchestration Selector** - Choose between routing patterns
 - 🐳 **Docker Ready** - Production containerization included
 
 ### Technical Features
@@ -111,15 +115,15 @@ RAG System    Conversations
 
 1. **Router Agent** - LLM-powered semantic routing (~95% accuracy)
 2. **Specialized Agents** - Domain-specific expertise
-   - Professional (technical queries)
-   - Communication (writing style)
-   - Knowledge (personal info via RAG)
-   - Decision (decision-making)
-   - General (fallback)
+   - 👔 **Professional** - Technical queries, programming, architecture (businessman with glasses)
+   - 😄 **Communication** - Writing style, tone, content (friendly with big smile)
+   - 📚 **Knowledge** - Personal info, memories via RAG (wise scholar with floating book)
+   - ⚖️ **Decision** - Decision support, trade-offs (split-colored face with balance)
+   - 🤖 **General** - Fallback handler (robot with digital display)
 3. **LangGraph Workflow** - State-based orchestration
 4. **Persistence Layer** - SQLAlchemy + SQLite
 5. **Vector Store** - ChromaDB for RAG
-6. **React Frontend** - Modern chat interface
+6. **React Frontend** - Modern chat interface with 3D avatars
 
 ---
 
@@ -350,7 +354,7 @@ Contributions welcome! Please:
 - ✅ Phase 7: Persistence Layer
 - ✅ Phase 8: Testing & Deployment
 
-**Built with:** FastAPI • LangChain • LangGraph • React • Docker • SQLAlchemy • ChromaDB
+**Built with:** FastAPI • LangChain • LangGraph • React 19 • Three.js • Docker • SQLAlchemy • ChromaDB
 
 ---
 

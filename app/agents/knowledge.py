@@ -5,6 +5,7 @@ Knowledge Agent - Personal knowledge base, facts, and memories.
 from app.orchestration.state import AgentState, Message
 from app.config.llm import get_llm
 from app.prompts.templates import KNOWLEDGE_AGENT_PROMPT
+from app.rag import get_retriever
 from datetime import datetime
 
 
@@ -18,7 +19,7 @@ def knowledge_agent(state: AgentState) -> AgentState:
     - Experiences and memories
     - Background and history
     
-    Note: Will be enhanced with RAG in Phase 8 for personalized knowledge retrieval.
+    Uses RAG to retrieve relevant personal knowledge.
     
     Args:
         state: Current agent state with message history
@@ -34,13 +35,25 @@ def knowledge_agent(state: AgentState) -> AgentState:
     latest_message = messages[-1]
     user_query = latest_message.content
     
+    # Retrieve relevant context from knowledge base
+    retriever = get_retriever()
+    context = retriever.retrieve_and_format(
+        query=user_query,
+        domain="knowledge",
+        top_k=3
+    )
+    
     # Get LLM instance
     llm = get_llm(temperature=0.4)
     
+    # Prepare system prompt with retrieved context
+    system_prompt = KNOWLEDGE_AGENT_PROMPT
+    if context:
+        system_prompt += f"\n\n{context}\n\nUse the personal knowledge above to provide accurate, personalized responses."
+    
     # Prepare messages for LLM
-    # Note: In Phase 8, we'll add RAG retrieval here to fetch relevant personal knowledge
     llm_messages = [
-        {"role": "system", "content": KNOWLEDGE_AGENT_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_query}
     ]
     

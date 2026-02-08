@@ -17,8 +17,13 @@ class ChatRequest(BaseModel):
     )
     
     user_id: Optional[str] = Field(
+        "default_user",
+        description="User identifier for personalization"
+    )
+    
+    conversation_id: Optional[str] = Field(
         None,
-        description="Optional user identifier for personalization"
+        description="Optional conversation ID to continue existing conversation"
     )
     
     session_id: Optional[str] = Field(
@@ -59,6 +64,8 @@ class ChatResponse(BaseModel):
     
     session_id: str = Field(..., description="Session identifier")
     
+    conversation_id: Optional[str] = Field(None, description="Conversation identifier for persistence")
+    
     routing_history: list[AgentExecution] = Field(
         default_factory=list,
         description="History of agent executions"
@@ -98,3 +105,42 @@ class StateExampleResponse(BaseModel):
     
     state_structure: dict = Field(..., description="Example agent state structure")
     note: str = Field(..., description="Explanatory note about the state")
+
+
+class ConversationResponse(BaseModel):
+    """Response model for conversation data"""
+    
+    id: str = Field(..., description="Conversation ID")
+    user_id: str = Field(..., description="User ID")
+    title: str = Field(..., description="Conversation title")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+    message_count: int = Field(..., description="Number of messages in conversation")
+
+
+class MessageResponse(BaseModel):
+    """Response model for message data"""
+    
+    id: str = Field(..., description="Message ID")
+    conversation_id: str = Field(..., description="Conversation ID")
+    role: str = Field(..., description="Message role (user/assistant)")
+    content: str = Field(..., description="Message content")
+    agent: Optional[str] = Field(None, description="Agent that generated response")
+    confidence: Optional[float] = Field(None, description="Routing confidence")
+    processing_time_ms: Optional[float] = Field(None, description="Processing time")
+    timestamp: datetime = Field(..., description="Message timestamp")
+
+
+class ConversationListResponse(BaseModel):
+    """Response model for list of conversations"""
+    
+    conversations: list[ConversationResponse] = Field(..., description="List of conversations")
+    total: int = Field(..., description="Total number of conversations")
+
+
+class ConversationMessagesResponse(BaseModel):
+    """Response model for conversation messages"""
+    
+    conversation_id: str = Field(..., description="Conversation ID")
+    messages: list[MessageResponse] = Field(..., description="List of messages")
+    total: int = Field(..., description="Total number of messages")

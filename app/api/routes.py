@@ -2,7 +2,8 @@
 API routes for the Digital Twin AI system.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
 from datetime import datetime
 import time
 
@@ -11,7 +12,13 @@ from app.api.models import (
     ChatResponse,
     AgentExecution,
     StateExampleResponse,
+    ConversationResponse,
+    ConversationListResponse,
+    ConversationMessagesResponse,
+    MessageResponse,
 )
+from app.database import get_db
+from app.services.conversation import ConversationService
 from app.orchestration.state import (
     AgentState,
     Message,
@@ -104,23 +111,50 @@ async def chat_with_graph(request: ChatRequest) -> ChatResponse:
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     """
-    Main chat endpoint with agent routing and execution.
+    Main chat endpoint with agent routing, execution, and persistence.
     
     Flow:
-    1. Create initial state
-    2. Add user message
-    3. Route to appropriate agent
-    4. Execute agent
-    5. Return response
+    1. Get or create user and conversation
+    2. Load conversation history if existing conversation
+    3. Create initial state
+    4. Add user message
+    5. Route to appropriate agent
+    6. Execute agent
+    7. Save messages to database
+    8. Return response
     """
     start_time = time.time()
+    
+    # Get or create user
+    user = ConversationService.get_or_create_user(db, username=request.user_id)
+    
+    # Get or create conversation
+    if request.conversation_id:
+        conversation = ConversationService.get_conversation(db, request.conversation_id)
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if conversation.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Access denied to this conversation")
+    else:
+        # Create new conversation
+        conversation = ConversationService.create_conversation(
+            db, 
+            user_id=user.id,
+            title=request.message[:50] + ("..." if len(request.message) > 50 else "")
+        )
+    
+    # Load conversation history if continuing conversation
+    history_messages = []
+    if request.conversation_id:
+        db_messages = ConversationService.get_conversation_messages(db, conversation.id)
+        history_messages = ConversationService.messages_to_state_format(db_messages)
     
     # Create initial state directly
     now = datetime.now()
     state: AgentState = {
-        "messages": [Message(role="user", content=request.message, timestamp=now.isoformat())],
+        "messages": history_messages + [Message(role="user", content=request.message, timestamp=now.isoformat())],
         "current_agent": "router",
         "next_agent": None,
         "routing_history": [],
@@ -128,7 +162,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         "retrieved_docs": [],
         "rag_query": None,
         "user_id": request.user_id,
-        "session_id": f"session_{time.time()}",
+        "session_id": request.session_id or f"session_{time.time()}",
         "user_query": request.message,
         "iterations": 0,
         "max_iterations": request.max_iterations,
@@ -137,6 +171,14 @@ async def chat(request: ChatRequest) -> ChatResponse:
         "created_at": now,
         "updated_at": now,
     }
+    
+    # Save user message to database
+    ConversationService.add_message(
+        db,
+        conversation_id=conversation.id,
+        role="user",
+        content=request.message
+    )
     
     # Use LLM-based router (Phase 4)
     target_agent, confidence, reasoning = router_agent_with_fallback(request.message)
@@ -166,10 +208,21 @@ async def chat(request: ChatRequest) -> ChatResponse:
         target_agent = "general"
     
     # Get the agent's response (last message)
-    agent_response = state["messages"][-1].content  # Access as attribute
+    agent_response = state["messages"][-1].content
     
     # Calculate processing time
     processing_time = (time.time() - start_time) * 1000  # Convert to ms
+    
+    # Save assistant message to database
+    ConversationService.add_message(
+        db,
+        conversation_id=conversation.id,
+        role="assistant",
+        content=agent_response,
+        agent=target_agent,
+        confidence=confidence,
+        processing_time_ms=processing_time
+    )
     
     # Build response
     return ChatResponse(
@@ -177,9 +230,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
         agent_used=target_agent,
         confidence=confidence,
         session_id=state["session_id"],
+        conversation_id=conversation.id,
         routing_history=[
             AgentExecution(
-                agent_name=rd.target_agent,  # Access as attribute
+                agent_name=rd.target_agent,
                 confidence=rd.confidence,
                 reasoning=rd.reasoning,
                 timestamp=rd.timestamp,
@@ -296,3 +350,139 @@ async def get_state_example():
         state_structure=state,
         note="This shows the internal state structure with Phase 3 agents active!",
     )
+
+
+@router.get("/conversations", response_model=ConversationListResponse)
+async def list_conversations(
+    user_id: str = "default_user",
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+) -> ConversationListResponse:
+    """
+    List all conversations for a user.
+    
+    Args:
+        user_id: User identifier
+        limit: Maximum number of conversations to return
+        offset: Offset for pagination
+        db: Database session
+        
+    Returns:
+        List of conversations
+    """
+    # Get or create user
+    user = ConversationService.get_or_create_user(db, username=user_id)
+    
+    # Get conversations
+    conversations = ConversationService.list_conversations(db, user.id, limit, offset)
+    
+    # Convert to response format
+    conversation_responses = [
+        ConversationResponse(
+            id=conv.id,
+            user_id=conv.user_id,
+            title=conv.title,
+            created_at=conv.created_at,
+            updated_at=conv.updated_at,
+            message_count=len(conv.messages)
+        )
+        for conv in conversations
+    ]
+    
+    return ConversationListResponse(
+        conversations=conversation_responses,
+        total=len(conversation_responses)
+    )
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=ConversationMessagesResponse)
+async def get_conversation_messages(
+    conversation_id: str,
+    user_id: str = "default_user",
+    limit: int = None,
+    db: Session = Depends(get_db)
+) -> ConversationMessagesResponse:
+    """
+    Get all messages for a conversation.
+    
+    Args:
+        conversation_id: Conversation ID
+        user_id: User identifier (for authorization)
+        limit: Optional limit on number of messages
+        db: Database session
+        
+    Returns:
+        List of messages
+    """
+    # Get user
+    user = ConversationService.get_or_create_user(db, username=user_id)
+    
+    # Get conversation
+    conversation = ConversationService.get_conversation(db, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    if conversation.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this conversation")
+    
+    # Get messages
+    messages = ConversationService.get_conversation_messages(db, conversation_id, limit)
+    
+    # Convert to response format
+    message_responses = [
+        MessageResponse(
+            id=msg.id,
+            conversation_id=msg.conversation_id,
+            role=msg.role,
+            content=msg.content,
+            agent=msg.agent,
+            confidence=msg.confidence,
+            processing_time_ms=msg.processing_time_ms,
+            timestamp=msg.timestamp
+        )
+        for msg in messages
+    ]
+    
+    return ConversationMessagesResponse(
+        conversation_id=conversation_id,
+        messages=message_responses,
+        total=len(message_responses)
+    )
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    user_id: str = "default_user",
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a conversation and all its messages.
+    
+    Args:
+        conversation_id: Conversation ID
+        user_id: User identifier (for authorization)
+        db: Database session
+        
+    Returns:
+        Success message
+    """
+    # Get user
+    user = ConversationService.get_or_create_user(db, username=user_id)
+    
+    # Get conversation
+    conversation = ConversationService.get_conversation(db, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    if conversation.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this conversation")
+    
+    # Delete conversation
+    success = ConversationService.delete_conversation(db, conversation_id)
+    
+    if success:
+        return {"message": "Conversation deleted successfully", "conversation_id": conversation_id}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to delete conversation")

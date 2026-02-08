@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # Safety Configuration
     max_agent_iterations: int = 10
     tool_timeout_seconds: int = 30
+    
+    # Database Configuration
+    database_url: str | None = None  # Optional, defaults to SQLite
+    database_echo: bool = False  # Set to True for SQL debugging
 
 
 # Global settings instance

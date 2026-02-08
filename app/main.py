@@ -38,10 +38,17 @@ app.include_router(api_router, prefix="/api", tags=["chat"])
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
+    from app.database import init_db
+    
     logger.info("Starting Digital Twin AI application...")
     logger.info(f"Using LLM model: {settings.default_llm_model}")
     logger.info(f"OpenAI API base: {settings.openai_api_base}")
     logger.info(f"Vector store type: {settings.vector_store_type}")
+    
+    # Initialize database
+    logger.info("Initializing database...")
+    init_db()
+    logger.info("Database initialized successfully")
     
     # Enable LangSmith tracing if configured
     if settings.langsmith_tracing_v2:
@@ -63,6 +70,8 @@ async def root():
         "docs": "/docs",
         "endpoints": {
             "chat": "/api/chat",
+            "conversations": "/api/conversations",
+            "conversation_messages": "/api/conversations/{conversation_id}/messages",
             "state_example": "/api/state/example",
             "health": "/health"
         }

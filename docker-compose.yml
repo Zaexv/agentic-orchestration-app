@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: digital-twin-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://api.openai.com/v1}
+      - DATABASE_URL=sqlite:////app/data/database/conversations.db
+      - VECTOR_STORE_TYPE=${VECTOR_STORE_TYPE:-chromadb}
+      - CHROMA_PERSIST_DIR=/app/data/vector_stores
+      - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-gpt-4o-mini}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_RELOAD=false
+    volumes:
+      - ./data:/app/data
+      - ./data/database:/app/data/database
+      - ./data/vector_stores:/app/data/vector_stores
+      - ./data/documents:/app/data/documents
+    networks:
+      - digital-twin-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./front_end
+      dockerfile: Dockerfile
+    container_name: digital-twin-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - digital-twin-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  digital-twin-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+    driver: local

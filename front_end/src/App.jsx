@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Bot, Send, Plus, MessageSquare, Loader2, ChevronDown, ChevronUp, Briefcase, Mail, Brain, Scale, Zap } from 'lucide-react'
+import { Bot, Send, Plus, MessageSquare, Loader2, ChevronDown, ChevronUp, Briefcase, Mail, Brain, Scale, Zap, Network } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { Agent3D } from './components/Agent3D'
+import { Logo3D } from './components/Logo3D'
 import './App.css'
 
 const AGENTS = [
@@ -48,6 +51,18 @@ const AGENTS = [
   }
 ]
 
+const ORCHESTRATION_PATTERNS = [
+  {
+    id: 'router',
+    name: 'Router',
+    description: 'Routes each query to the most appropriate specialized agent',
+    icon: Network
+  },
+  // Future patterns can be added here:
+  // { id: 'sequential', name: 'Sequential', description: 'Agents work in sequence' },
+  // { id: 'hierarchical', name: 'Hierarchical', description: 'Manager agent delegates to sub-agents' },
+]
+
 function App() {
   const [conversations, setConversations] = useState([])
   const [currentConvId, setCurrentConvId] = useState(null)
@@ -56,6 +71,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [thinkingSteps, setThinkingSteps] = useState([])
   const [showAgents, setShowAgents] = useState(false)
+  const [orchestrationPattern, setOrchestrationPattern] = useState('router')
 
   useEffect(() => {
     loadConversations()
@@ -160,6 +176,9 @@ function App() {
     }
   }
 
+  const currentPattern = ORCHESTRATION_PATTERNS.find(p => p.id === orchestrationPattern)
+  const PatternIcon = currentPattern?.icon || Network
+
   return (
     <div className="app">
       {/* Sidebar */}
@@ -230,8 +249,24 @@ function App() {
         {/* Header */}
         <header className="header">
           <div className="logo">
-            <Bot size={24} />
-            <span>AI Digital Twin</span>
+            <Logo3D size={40} />
+            <div className="logo-text">
+              <span className="logo-title">AI Digital Twin</span>
+              <div className="orchestration-selector">
+                <PatternIcon size={12} />
+                <select 
+                  value={orchestrationPattern}
+                  onChange={(e) => setOrchestrationPattern(e.target.value)}
+                  className="pattern-select"
+                >
+                  {ORCHESTRATION_PATTERNS.map(pattern => (
+                    <option key={pattern.id} value={pattern.id}>
+                      {pattern.name} Orchestration
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -239,35 +274,37 @@ function App() {
         <div className="chat-container">
           {messages.length === 0 ? (
             <div className="empty-state">
-              <Bot size={48} className="empty-icon" />
+              <Logo3D size={80} />
               <h2>AI Digital Twin System</h2>
-              <p>Powered by {AGENTS.length} specialized agents</p>
+              <div className="system-info">
+                <div className="info-badge">
+                  <PatternIcon size={14} />
+                  <span>{currentPattern?.name} Orchestration Pattern</span>
+                </div>
+                <div className="info-badge">
+                  <Zap size={14} />
+                  <span>{AGENTS.length} Specialized Agents</span>
+                </div>
+              </div>
+              <p className="pattern-description">{currentPattern?.description}</p>
               
               {/* Agent Cards */}
               <div className="agents-grid">
-                {AGENTS.map(agent => {
-                  const Icon = agent.icon
-                  return (
-                    <div key={agent.id} className="agent-card">
-                      <div 
-                        className="agent-icon"
-                        style={{ backgroundColor: `${agent.color}20`, color: agent.color }}
-                      >
-                        <Icon size={28} />
-                      </div>
-                      <h3 className="agent-name">{agent.name}</h3>
-                      <p className="agent-description">{agent.description}</p>
-                      <div className="agent-specialties">
-                        {agent.specialties.map((spec, i) => (
-                          <span key={i} className="specialty-tag">{spec}</span>
-                        ))}
-                      </div>
+                {AGENTS.map(agent => (
+                  <div key={agent.id} className="agent-card">
+                    <Agent3D agentId={agent.id} size={100} />
+                    <h3 className="agent-name">{agent.name}</h3>
+                    <p className="agent-description">{agent.description}</p>
+                    <div className="agent-specialties">
+                      {agent.specialties.map((spec, i) => (
+                        <span key={i} className="specialty-tag">{spec}</span>
+                      ))}
                     </div>
-                  )
-                })}
+                  </div>
+                ))}
               </div>
 
-              <p className="start-hint">Type a message below to get started</p>
+              <p className="start-hint">Type a message below - the router will select the best agent for you</p>
             </div>
           ) : (
             <div className="messages">
@@ -319,7 +356,7 @@ function App() {
   )
 }
 
-// Message Component
+// Message Component with 3D Agent Face
 function Message({ message }) {
   const [showTrace, setShowTrace] = useState(false)
 
@@ -332,98 +369,120 @@ function Message({ message }) {
   }
 
   return (
-    <div className="message assistant">
-      <div className="message-header">
-        {message.agent && (
-          <div className="agent-badge">{message.agent}</div>
-        )}
-        {message.confidence && (
-          <div className="confidence-badge">
-            {(message.confidence * 100).toFixed(0)}% confident
-          </div>
-        )}
-        {message.trace && (
-          <button 
-            className="trace-toggle"
-            onClick={() => setShowTrace(!showTrace)}
-          >
-            {showTrace ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            <span>View Trace</span>
-          </button>
-        )}
-      </div>
-      
-      <div className="message-content">
-        <ReactMarkdown
-          components={{
-            code({node, inline, className, children, ...props}) {
-              const match = /language-(\w+)/.exec(className || '')
-              return !inline && match ? (
-                <SyntaxHighlighter
-                  style={vscDarkPlus}
-                  language={match[1]}
-                  PreTag="div"
-                  customStyle={{
-                    margin: '1rem 0',
-                    borderRadius: '8px',
-                    fontSize: '0.875rem'
-                  }}
-                  {...props}
-                >
-                  {String(children).replace(/\n$/, '')}
-                </SyntaxHighlighter>
-              ) : (
-                <code className="inline-code" {...props}>
-                  {children}
-                </code>
-              )
-            },
-            p: ({children}) => <p className="markdown-p">{children}</p>,
-            ul: ({children}) => <ul className="markdown-ul">{children}</ul>,
-            ol: ({children}) => <ol className="markdown-ol">{children}</ol>,
-            li: ({children}) => <li className="markdown-li">{children}</li>,
-            h1: ({children}) => <h1 className="markdown-h1">{children}</h1>,
-            h2: ({children}) => <h2 className="markdown-h2">{children}</h2>,
-            h3: ({children}) => <h3 className="markdown-h3">{children}</h3>,
-          }}
-        >
-          {message.content}
-        </ReactMarkdown>
-      </div>
-
-      {showTrace && message.trace && (
-        <div className="trace-panel">
-          <div className="trace-section">
-            <div className="trace-label">🧠 Reasoning</div>
-            <div className="trace-value">{message.trace.reasoning}</div>
-          </div>
-          {message.trace.processingTime && (
-            <div className="trace-section">
-              <div className="trace-label">⚡ Processing Time</div>
-              <div className="trace-value">{message.trace.processingTime.toFixed(2)}ms</div>
-            </div>
-          )}
-          {message.trace.iterations && (
-            <div className="trace-section">
-              <div className="trace-label">🔄 Iterations</div>
-              <div className="trace-value">{message.trace.iterations}</div>
-            </div>
-          )}
-          {message.trace.routingHistory && message.trace.routingHistory.length > 0 && (
-            <div className="trace-section">
-              <div className="trace-label">📋 Routing History</div>
-              <div className="trace-routing">
-                {message.trace.routingHistory.map((r, i) => (
-                  <div key={i} className="routing-item">
-                    <span className="routing-agent">{r.agent_name}</span>
-                    <span className="routing-confidence">{(r.confidence * 100).toFixed(0)}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+    <div className="message-wrapper assistant">
+      {/* 3D Agent Face */}
+      {message.agent && (
+        <div className="message-agent-face">
+          <Agent3D agentId={message.agent} size={70} />
         </div>
       )}
+
+      {/* Message Content */}
+      <div className="message assistant">
+        <div className="message-header">
+          {message.agent && (
+            <div className="agent-badge">{message.agent}</div>
+          )}
+          {message.confidence && (
+            <div className="confidence-badge">
+              {(message.confidence * 100).toFixed(0)}% confident
+            </div>
+          )}
+          {message.trace && (
+            <button 
+              className="trace-toggle"
+              onClick={() => setShowTrace(!showTrace)}
+            >
+              {showTrace ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              <span>View Trace</span>
+            </button>
+          )}
+        </div>
+        
+        <div className="message-content">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({node, inline, className, children, ...props}) {
+                const match = /language-(\w+)/.exec(className || '')
+                return !inline && match ? (
+                  <SyntaxHighlighter
+                    style={vscDarkPlus}
+                    language={match[1]}
+                    PreTag="div"
+                    customStyle={{
+                      margin: '1rem 0',
+                      borderRadius: '8px',
+                      fontSize: '0.875rem'
+                    }}
+                    {...props}
+                  >
+                    {String(children).replace(/\n$/, '')}
+                  </SyntaxHighlighter>
+                ) : (
+                  <code className="inline-code" {...props}>
+                    {children}
+                  </code>
+                )
+              },
+              table: ({children}) => (
+                <div className="table-wrapper">
+                  <table className="markdown-table">{children}</table>
+                </div>
+              ),
+              thead: ({children}) => <thead className="markdown-thead">{children}</thead>,
+              tbody: ({children}) => <tbody className="markdown-tbody">{children}</tbody>,
+              tr: ({children}) => <tr className="markdown-tr">{children}</tr>,
+              th: ({children}) => <th className="markdown-th">{children}</th>,
+              td: ({children}) => <td className="markdown-td">{children}</td>,
+              p: ({children}) => <p className="markdown-p">{children}</p>,
+              ul: ({children}) => <ul className="markdown-ul">{children}</ul>,
+              ol: ({children}) => <ol className="markdown-ol">{children}</ol>,
+              li: ({children}) => <li className="markdown-li">{children}</li>,
+              h1: ({children}) => <h1 className="markdown-h1">{children}</h1>,
+              h2: ({children}) => <h2 className="markdown-h2">{children}</h2>,
+              h3: ({children}) => <h3 className="markdown-h3">{children}</h3>,
+              blockquote: ({children}) => <blockquote className="markdown-blockquote">{children}</blockquote>,
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
+        </div>
+
+        {showTrace && message.trace && (
+          <div className="trace-panel">
+            <div className="trace-section">
+              <div className="trace-label">🧠 Reasoning</div>
+              <div className="trace-value">{message.trace.reasoning}</div>
+            </div>
+            {message.trace.processingTime && (
+              <div className="trace-section">
+                <div className="trace-label">⚡ Processing Time</div>
+                <div className="trace-value">{message.trace.processingTime.toFixed(2)}ms</div>
+              </div>
+            )}
+            {message.trace.iterations && (
+              <div className="trace-section">
+                <div className="trace-label">🔄 Iterations</div>
+                <div className="trace-value">{message.trace.iterations}</div>
+              </div>
+            )}
+            {message.trace.routingHistory && message.trace.routingHistory.length > 0 && (
+              <div className="trace-section">
+                <div className="trace-label">📋 Routing History</div>
+                <div className="trace-routing">
+                  {message.trace.routingHistory.map((r, i) => (
+                    <div key={i} className="routing-item">
+                      <span className="routing-agent">{r.agent_name}</span>
+                      <span className="routing-confidence">{(r.confidence * 100).toFixed(0)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

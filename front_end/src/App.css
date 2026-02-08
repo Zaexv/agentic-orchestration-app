@@ -632,3 +632,140 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Logo updates */
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.logo-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.logo-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* System Info Badges */
+.system-info {
+  display: flex;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.info-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* Table Styling */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 1rem 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  background: var(--bg-card);
+}
+
+.markdown-thead {
+  background: var(--bg-hover);
+  border-bottom: 2px solid var(--border);
+}
+
+.markdown-th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-right: 1px solid var(--border);
+}
+
+.markdown-th:last-child {
+  border-right: none;
+}
+
+.markdown-tbody {
+  background: var(--bg-card);
+}
+
+.markdown-tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown-tr:last-child {
+  border-bottom: none;
+}
+
+.markdown-tr:hover {
+  background: var(--bg-hover);
+}
+
+.markdown-td {
+  padding: 0.75rem 1rem;
+  color: var(--text-primary);
+  border-right: 1px solid var(--border);
+}
+
+.markdown-td:last-child {
+  border-right: none;
+}
+
+/* Blockquote styling */
+.markdown-blockquote {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--accent-blue);
+  background: var(--bg-hover);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Message with 3D Agent Face */
+.message-wrapper.assistant {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  align-self: flex-start;
+  max-width: 85%;
+}
+
+.message-agent-face {
+  flex-shrink: 0;
+  width: 70px;
+  height: 70px;
+  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.message-wrapper.assistant .message {
+  flex: 1;
+  max-width: 100%;
+}

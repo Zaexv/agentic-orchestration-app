@@ -2,10 +2,13 @@ import { useState, useEffect } from 'react'
 import { Bot, Send, Plus, MessageSquare, Loader2, ChevronDown, ChevronUp, Briefcase, Mail, Brain, Scale, Zap, Network } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Agent3D } from './components/Agent3D'
 import { Logo3D } from './components/Logo3D'
+import 'katex/dist/katex.min.css'
 import './App.css'
 
 const AGENTS = [
@@ -432,7 +435,8 @@ function Message({ message }) {
         
         <div className="message-content">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
             components={{
               code({node, inline, className, children, ...props}) {
                 const match = /language-(\w+)/.exec(className || '')
@@ -482,24 +486,8 @@ function Message({ message }) {
 
         {showTrace && message.trace && (
           <div className="trace-panel">
-            <div className="trace-section">
-              <div className="trace-label">🧠 Reasoning</div>
-              <div className="trace-value">{message.trace.reasoning}</div>
-            </div>
-            {message.trace.processingTime && (
-              <div className="trace-section">
-                <div className="trace-label">⚡ Processing Time</div>
-                <div className="trace-value">{message.trace.processingTime.toFixed(2)}ms</div>
-              </div>
-            )}
-            {message.trace.iterations && (
-              <div className="trace-section">
-                <div className="trace-label">�� Iterations</div>
-                <div className="trace-value">{message.trace.iterations}</div>
-              </div>
-            )}
             {message.trace.iterationDetails && message.trace.iterationDetails.length > 0 && (
-              <div className="trace-section">
+              <div className="trace-section trace-section-main">
                 <div className="trace-label">🔄 Iteration Log</div>
                 <div className="trace-iterations">
                   {message.trace.iterationDetails.map((detail, i) => (
@@ -520,6 +508,21 @@ function Message({ message }) {
                 </div>
               </div>
             )}
+            
+            <div className="trace-metadata">
+              {message.trace.iterations && (
+                <div className="trace-section trace-section-compact">
+                  <div className="trace-label">🔁 Total Iterations</div>
+                  <div className="trace-value">{message.trace.iterations}</div>
+                </div>
+              )}
+              {message.trace.processingTime && (
+                <div className="trace-section trace-section-compact">
+                  <div className="trace-label">⚡ Processing Time</div>
+                  <div className="trace-value">{message.trace.processingTime.toFixed(2)}ms</div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

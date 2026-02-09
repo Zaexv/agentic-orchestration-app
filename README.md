@@ -27,19 +27,21 @@ This project implements a **production-ready AI-powered digital twin** with **5 
 - 📊 **StateGraph Workflow** - Visual graph-based orchestration with LangGraph
 - 🔍 **RAG System** - Retrieval-Augmented Generation with ChromaDB
 - 💾 **Persistent Conversations** - SQLite database with full history
-- 🔄 **Multi-turn Conversations** - Continue conversations across sessions
-- 🎨 **Modern UI** - React 19 + Vite with dark space theme
-- 🎭 **3D Agent Avatars** - Unique cartoon-style 3D faces for each agent
-- 🔍 **AI Thinking Visualization** - Real-time agent reasoning and trace display
-- 📝 **Rich Markdown** - Code highlighting, tables, and formatting
+- 🔄 **Multi-Iteration Processing** - Automatic retry on low confidence, up to 5 iterations
+- 🔁 **Shared Memory** - All agents see full conversation history
+- 🎨 **Modern UI** - React 19 + Vite with dark NASA-inspired theme
+- 🎭 **3D Agent Avatars** - Unique cartoon-style 3D faces for each agent (Three.js)
+- 🔍 **AI Thinking Visualization** - Real-time agent reasoning and iteration trace
+- 📝 **Rich Markdown** - Code highlighting, tables, GitHub Flavored Markdown
+- 🧮 **LaTeX Math Rendering** - Beautiful formulas with KaTeX
 - 🎛️ **Orchestration Selector** - Choose between routing patterns
 - 🐳 **Docker Ready** - Production containerization included
 
 ### Technical Features
 - ✅ **89 Tests Passing** - 97% success rate, 78% coverage
-- 📚 **Comprehensive Docs** - Deployment, API, user guides
+- 📚 **Comprehensive Docs** - Architecture, deployment, theory, guides
 - 🔐 **Security** - Non-root containers, environment validation
-- 📈 **Monitoring** - Structured logging, health checks
+- 📈 **Monitoring** - Structured logging, health checks, iteration tracking
 - 🚀 **Fast** - <500ms API responses, <100ms DB queries
 
 ---
@@ -84,12 +86,25 @@ npm run dev
 
 ## 📚 Documentation
 
+### Main Documentation
 | Document | Description |
 |----------|-------------|
-| [**Deployment Guide**](./docs/DEPLOYMENT.md) | Docker, cloud, manual deployment instructions |
-| [**API Docs**](http://localhost:8000/docs) | Interactive Swagger API documentation |
+| [**README**](./README.md) | This file - Quick start and overview |
+| [**Agentic AI Theory**](./Agentic-AI-Theory.md) | Comprehensive theory, patterns, and best practices |
 | [**CHANGELOG**](./CHANGELOG.md) | Version history and feature changes |
-| [**Project Plan**](./project_plan.md) | Complete 8-phase implementation plan |
+
+### Technical Guides (`docs/`)
+| Document | Description |
+|----------|-------------|
+| [**Architecture**](./docs/ARCHITECTURE.md) | System architecture with Mermaid diagrams |
+| [**Deployment**](./docs/DEPLOYMENT.md) | Docker, cloud, and manual deployment |
+| [**Shared Memory**](./docs/SHARED_MEMORY.md) | How agents share conversation history |
+| [**Multi-Iteration**](./docs/MULTI_ITERATION.md) | Multi-iteration processing logic |
+| [**Iteration Tests**](./docs/ITERATION_TEST_PROMPTS.md) | Test prompts for iteration system |
+
+### API Documentation
+- **Interactive API Docs**: http://localhost:8000/docs (Swagger UI)
+- **ReDoc**: http://localhost:8000/redoc (Alternative API docs)
 
 ---
 

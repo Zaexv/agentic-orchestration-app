@@ -20,7 +20,10 @@
 9. [Design Principles](#9-design-principles)
 10. [Common Anti-Patterns](#10-common-anti-patterns)
 11. [Metrics and Evaluation](#11-metrics-and-evaluation)
-12. [References](#12-references)
+12. [**LangGraph & DAG-Based Orchestration**](#12-langgraph--dag-based-orchestration) ⭐ NEW
+13. [**RAG Patterns in Multi-Agent Systems**](#13-rag-patterns-in-multi-agent-systems) ⭐ NEW
+14. [**Implementation Patterns from Production**](#14-implementation-patterns-from-production) ⭐ NEW
+15. [References](#15-references)
 
 ---
 
@@ -2312,3 +2315,1104 @@ https://github.com/AIAnytime/Multi-Agents-Orchestration-Design-Patterns
 **Document Maintained By:** AI Architecture Team  
 **License:** CC BY 4.0  
 **Contributions Welcome:** Submit issues/PRs to improve this resource
+## 📚 TABLE OF CONTENTS
+
+1. [Genesis: From LLM to Agent](#1-genesis-from-llm-to-agent)
+2. [Agentic AI: Foundational Theory](#2-agentic-ai-foundational-theory)
+3. [Agent Orchestration: Definition and Purpose](#3-agent-orchestration-definition-and-purpose)
+4. [Foundational Papers](#4-foundational-papers)
+5. [Orchestration Architectures](#5-orchestration-architectures)
+6. [Critical Components](#6-critical-components)
+7. [Paradigm Evolution](#7-paradigm-evolution)
+8. [Traditional RAG vs. Agentic RAG](#8-traditional-rag-vs-agentic-rag)
+9. [Design Principles](#9-design-principles)
+10. [Common Anti-Patterns](#10-common-anti-patterns)
+11. [Metrics and Evaluation](#11-metrics-and-evaluation)
+12. [**LangGraph & DAG-Based Orchestration**](#12-langgraph--dag-based-orchestration)
+13. [**RAG Patterns in Multi-Agent Systems**](#13-rag-patterns-in-multi-agent-systems)
+14. [**Implementation Patterns from Production**](#14-implementation-patterns-from-production)
+15. [References](#15-references)
+
+---
+
+## 12. LANGGRAPH & DAG-BASED ORCHESTRATION
+
+### 12.1 What is LangGraph?
+
+**LangGraph** is a library built on top of LangChain that enables the creation of stateful, multi-actor applications using **Directed Acyclic Graphs (DAGs)**.
+
+**Key Concepts:**
+- **StateGraph**: A graph where each node can read and modify a shared state
+- **Nodes**: Computational units (functions) that process state
+- **Edges**: Transitions between nodes (conditional or direct)
+- **State**: A TypedDict that flows through the graph
+- **Checkpoints**: State snapshots for debugging and recovery
+
+### 12.2 DAG vs. Sequential Flow
+
+```mermaid
+graph LR
+    subgraph "Sequential (Traditional)"
+        S1[Router] --> S2[Agent] --> S3[Response]
+    end
+    
+    subgraph "DAG (LangGraph)"
+        D1[START] --> D2[Router Node]
+        D2 --> D3{Conditional<br/>Edge}
+        D3 -->|professional| D4[Professional<br/>Agent]
+        D3 -->|communication| D5[Communication<br/>Agent]
+        D3 -->|knowledge| D6[Knowledge<br/>Agent]
+        D3 -->|decision| D7[Decision<br/>Agent]
+        D3 -->|general| D8[General<br/>Agent]
+        D4 --> D9{Should<br/>Continue?}
+        D5 --> D9
+        D6 --> D9
+        D7 --> D9
+        D8 --> D9
+        D9 -->|continue| D2
+        D9 -->|end| D10[END]
+    end
+```
+
+**Advantages of DAG:**
+1. **Cycles**: Can loop back for multi-iteration processing
+2. **Conditional Routing**: Different paths based on state
+3. **State Management**: Shared, type-safe state across nodes
+4. **Observability**: Built-in tracing and debugging
+5. **Recovery**: Checkpoint system for failure handling
+
+### 12.3 LangGraph Core Primitives
+
+#### State Definition (TypedDict)
+
+```python
+from typing import TypedDict, Annotated, Sequence
+from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
+
+class AgentState(TypedDict):
+    """Shared state that flows through the graph"""
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    current_agent: str
+    iterations: int
+    max_iterations: int
+    should_continue: bool
+    routing_confidence: float
+    routing_history: list[RoutingDecision]
+    iteration_log: list[IterationLog]
+```
+
+**Key Feature**: `Annotated[Sequence[BaseMessage], add_messages]`
+- Uses a **reducer function** to merge messages
+- Prevents duplicate messages
+- Maintains message order
+
+#### Graph Construction
+
+```python
+from langgraph.graph import StateGraph, END
+
+# Create graph
+workflow = StateGraph(AgentState)
+
+# Add nodes
+workflow.add_node("router", router_node)
+workflow.add_node("professional", professional_agent_node)
+workflow.add_node("communication", communication_agent_node)
+# ... more agents
+
+# Add edges
+workflow.add_edge("router", route_to_agent)  # Conditional edge
+workflow.add_conditional_edges(
+    "professional",
+    should_continue,
+    {
+        "continue": "router",  # Loop back
+        "end": END
+    }
+)
+
+# Set entry point
+workflow.set_entry_point("router")
+
+# Compile
+app = workflow.compile()
+```
+
+### 12.4 Conditional Edges (Dynamic Routing)
+
+Conditional edges enable **dynamic path selection** based on state:
+
+```python
+def route_to_agent(state: AgentState) -> str:
+    """
+    Determines which agent node to execute based on routing decision.
+    Returns the name of the node to execute next.
+    """
+    routing_history = state["routing_history"]
+    if not routing_history:
+        return "general"
+    
+    latest = routing_history[-1]
+    return latest.target_agent  # Returns: "professional", "communication", etc.
+```
+
+**Pattern**: Conditional edges return a **string** that matches a node name.
+
+### 12.5 Should Continue Pattern
+
+A common pattern for controlling iteration cycles:
+
+```python
+def should_continue(state: AgentState) -> Literal["continue", "end"]:
+    """
+    Decides whether to continue iterating or end the workflow.
+    
+    Continue conditions:
+    1. Low confidence (< 70%) and iterations < 2
+    2. Continuation signals detected and iterations < 3
+    3. Not reached max_iterations
+    
+    Returns:
+        "continue" - Loop back to router
+        "end" - Finish workflow
+    """
+    if state["iterations"] >= state["max_iterations"]:
+        return "end"
+    
+    if not state["should_continue"]:
+        return "end"
+    
+    # Low confidence retry
+    if state["routing_confidence"] < 0.7 and state["iterations"] < 2:
+        return "continue"
+    
+    # Continuation signal detected
+    if state["iterations"] < 3:
+        last_message = state["messages"][-1].content.lower()
+        if any(signal in last_message for signal in [
+            "let me", "i'll also", "additionally"
+        ]):
+            return "continue"
+    
+    return "end"
+```
+
+### 12.6 State Reducers
+
+Reducers control how state is merged when multiple nodes update the same field:
+
+```python
+# Built-in reducer for messages
+from langgraph.graph.message import add_messages
+
+# Custom reducer for iteration counter
+def increment_iteration(existing: int, new: int) -> int:
+    """Increments iteration count"""
+    return existing + 1
+
+class AgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]  # Built-in
+    iterations: Annotated[int, increment_iteration]  # Custom
+```
+
+**Common Reducers:**
+- `add_messages` - Merge message lists
+- `lambda x, y: x + y` - Sum values
+- `lambda x, y: y` - Replace (default)
+- `lambda x, y: x` - Keep existing
+
+### 12.7 Execution and Streaming
+
+```python
+# Synchronous execution
+result = app.invoke(initial_state)
+
+# Streaming execution (yields after each node)
+for chunk in app.stream(initial_state):
+    print(chunk)
+
+# Async execution
+result = await app.ainvoke(initial_state)
+```
+
+### 12.8 Persistence and Checkpoints
+
+LangGraph supports **state persistence** for recovery and debugging:
+
+```python
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+# Create checkpoint storage
+checkpointer = SqliteSaver.from_conn_string("checkpoints.db")
+
+# Compile with checkpointing
+app = workflow.compile(checkpointer=checkpointer)
+
+# Run with thread_id for persistence
+config = {"configurable": {"thread_id": "conversation-123"}}
+result = app.invoke(initial_state, config=config)
+
+# Resume from checkpoint
+resumed = app.invoke(None, config=config)
+```
+
+### 12.9 LangGraph vs. Traditional Orchestration
+
+| **Aspect** | **Traditional** | **LangGraph** |
+|-----------|----------------|---------------|
+| **Structure** | Linear/sequential | DAG with cycles |
+| **State** | Passed manually | Managed by framework |
+| **Routing** | Hardcoded conditions | Conditional edges |
+| **Iteration** | Manual loops | Built-in cycle support |
+| **Observability** | Custom logging | Built-in tracing |
+| **Recovery** | Manual checkpoints | Automatic persistence |
+| **Type Safety** | Optional | TypedDict enforced |
+| **Debugging** | Print statements | Visual graph + state inspection |
+
+### 12.10 Real-World DAG Pattern: Multi-Iteration Router
+
+Our production system uses this pattern:
+
+```mermaid
+stateDiagram-v2
+    [*] --> RouterNode
+    RouterNode --> ProfessionalAgent: confidence > 0.9
+    RouterNode --> CommunicationAgent: social query
+    RouterNode --> KnowledgeAgent: factual query
+    RouterNode --> DecisionAgent: choice query
+    RouterNode --> GeneralAgent: fallback
+    
+    ProfessionalAgent --> ShouldContinue
+    CommunicationAgent --> ShouldContinue
+    KnowledgeAgent --> ShouldContinue
+    DecisionAgent --> ShouldContinue
+    GeneralAgent --> ShouldContinue
+    
+    ShouldContinue --> RouterNode: confidence < 0.7
+    ShouldContinue --> RouterNode: continuation signal
+    ShouldContinue --> [*]: end conditions met
+    
+    note right of ShouldContinue
+        Multi-iteration logic:
+        - Retry on low confidence
+        - Continue on signals
+        - Max 5 iterations
+    end note
+```
+
+**Benefits:**
+- Automatic quality improvement through iteration
+- Self-correcting on low confidence
+- Continuation for complex tasks
+- Bounded iteration (prevents infinite loops)
+
+---
+
+## 13. RAG PATTERNS IN MULTI-AGENT SYSTEMS
+
+### 13.1 What is RAG (Retrieval Augmented Generation)?
+
+**RAG** enhances LLM responses by retrieving relevant documents before generation:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant System
+    participant VectorDB
+    participant LLM
+    
+    User->>System: Query
+    System->>VectorDB: Semantic Search
+    VectorDB-->>System: Top K Documents
+    System->>LLM: Query + Retrieved Docs
+    LLM-->>System: Generated Response
+    System-->>User: Contextual Answer
+```
+
+**Key Components:**
+1. **Embedding Model**: Converts text to vectors
+2. **Vector Database**: Stores and searches embeddings
+3. **Retrieval Strategy**: How documents are selected
+4. **Generation**: LLM synthesizes answer from docs
+
+### 13.2 Traditional RAG vs. Agentic RAG
+
+| **Traditional RAG** | **Agentic RAG** |
+|---------------------|-----------------|
+| Single retrieval step | Multiple retrieval cycles |
+| Fixed query | Query refinement |
+| No self-correction | Iterative refinement |
+| Static documents | Dynamic document selection |
+| One knowledge base | Multiple specialized knowledge bases |
+| Passive retrieval | Active search strategy |
+
+### 13.3 Multi-Domain RAG Architecture
+
+Our system uses **domain-specific RAG** where each agent has its own knowledge base:
+
+```mermaid
+graph TB
+    Query[User Query] --> Router[Router Agent]
+    
+    Router --> Professional[Professional Agent]
+    Router --> Communication[Communication Agent]
+    Router --> Knowledge[Knowledge Agent]
+    Router --> Decision[Decision Agent]
+    Router --> General[General Agent]
+    
+    Professional --> ProfDB[(Professional<br/>Documents)]
+    Communication --> CommDB[(Communication<br/>Documents)]
+    Knowledge --> KnowDB[(Knowledge<br/>Documents)]
+    Decision --> DecDB[(Decision<br/>Documents)]
+    General --> GenDB[(General<br/>Documents)]
+    
+    Professional --> Shared[(Shared<br/>Knowledge Base)]
+    Communication --> Shared
+    Knowledge --> Shared
+    Decision --> Shared
+    General --> Shared
+    
+    ProfDB --> Response[Generated Response]
+    CommDB --> Response
+    KnowDB --> Response
+    DecDB --> Response
+    GenDB --> Response
+    Shared --> Response
+```
+
+**Implementation:**
+
+```python
+# Vector store configuration
+AGENT_DOMAINS = {
+    "professional": "professional_docs",
+    "communication": "communication_docs",
+    "knowledge": "knowledge_docs",
+    "decision": "decision_docs",
+    "general": "general_docs",
+    "shared": "shared_docs"  # Accessible by all agents
+}
+
+def retrieve_documents(query: str, agent: str, top_k: int = 5):
+    """
+    Retrieves documents from agent-specific and shared collections.
+    """
+    # Agent-specific retrieval
+    agent_docs = vector_store.similarity_search(
+        query,
+        collection_name=AGENT_DOMAINS[agent],
+        k=top_k
+    )
+    
+    # Shared knowledge retrieval
+    shared_docs = vector_store.similarity_search(
+        query,
+        collection_name=AGENT_DOMAINS["shared"],
+        k=top_k // 2
+    )
+    
+    # Combine and deduplicate
+    all_docs = agent_docs + shared_docs
+    unique_docs = deduplicate_documents(all_docs)
+    
+    return unique_docs[:top_k]
+```
+
+### 13.4 RAG Retrieval Strategies
+
+#### A. Semantic Search (Cosine Similarity)
+
+```python
+# Basic similarity search
+docs = vector_store.similarity_search(query, k=5)
+
+# With score threshold
+docs = vector_store.similarity_search_with_relevance_scores(
+    query, 
+    k=5,
+    score_threshold=0.7  # Only docs with similarity > 0.7
+)
+```
+
+#### B. MMR (Maximal Marginal Relevance)
+
+Balances relevance and diversity:
+
+```python
+docs = vector_store.max_marginal_relevance_search(
+    query,
+    k=5,
+    fetch_k=20,  # Fetch 20, return most diverse 5
+    lambda_mult=0.7  # Balance: 0=diversity, 1=relevance
+)
+```
+
+#### C. Hybrid Search (Semantic + Keyword)
+
+```python
+# Combine vector search + BM25
+semantic_docs = vector_store.similarity_search(query, k=10)
+keyword_docs = bm25_search(query, k=10)
+
+# Reciprocal Rank Fusion
+final_docs = reciprocal_rank_fusion(semantic_docs, keyword_docs, k=5)
+```
+
+#### D. Multi-Query Retrieval
+
+Generate multiple queries for better coverage:
+
+```python
+def multi_query_retrieval(query: str, agent: str):
+    # LLM generates query variations
+    variations = llm.invoke(
+        f"Generate 3 variations of this query: {query}"
+    )
+    
+    # Retrieve for each variation
+    all_docs = []
+    for variation in variations:
+        docs = retrieve_documents(variation, agent, top_k=3)
+        all_docs.extend(docs)
+    
+    # Deduplicate and rank
+    return deduplicate_and_rank(all_docs, original_query=query)
+```
+
+### 13.5 Agentic RAG Patterns
+
+#### Pattern 1: Query Decomposition
+
+```mermaid
+flowchart TD
+    Q[Complex Query] --> D[Decompose into<br/>Sub-Questions]
+    D --> Q1[Sub-Query 1]
+    D --> Q2[Sub-Query 2]
+    D --> Q3[Sub-Query 3]
+    
+    Q1 --> R1[Retrieve Docs 1]
+    Q2 --> R2[Retrieve Docs 2]
+    Q3 --> R3[Retrieve Docs 3]
+    
+    R1 --> S[Synthesize<br/>Final Answer]
+    R2 --> S
+    R3 --> S
+```
+
+#### Pattern 2: Self-RAG (Self-Reflective Retrieval)
+
+```mermaid
+flowchart TD
+    Q[Query] --> R[Retrieve Documents]
+    R --> G[Generate Answer]
+    G --> E{Evaluate<br/>Answer Quality}
+    E -->|Good| F[Final Answer]
+    E -->|Bad| R2[Retrieve More<br/>Documents]
+    R2 --> G
+```
+
+**Implementation:**
+
+```python
+def self_rag(query: str, agent: str, max_attempts: int = 3):
+    for attempt in range(max_attempts):
+        # Retrieve documents
+        docs = retrieve_documents(query, agent, top_k=5 * (attempt + 1))
+        
+        # Generate answer
+        answer = generate_response(query, docs)
+        
+        # Self-evaluate
+        evaluation = llm.invoke(
+            f"Does this answer adequately address the query?\n"
+            f"Query: {query}\nAnswer: {answer}\n"
+            f"Respond with: YES or NO"
+        )
+        
+        if evaluation.content.strip() == "YES":
+            return answer
+    
+    return answer  # Return best attempt
+```
+
+#### Pattern 3: Iterative Retrieval
+
+```python
+def iterative_rag(query: str, agent: str):
+    context = ""
+    refined_query = query
+    
+    for iteration in range(3):
+        # Retrieve with refined query
+        docs = retrieve_documents(refined_query, agent, top_k=5)
+        context += "\n".join(doc.page_content for doc in docs)
+        
+        # Generate partial answer
+        partial_answer = generate_response(refined_query, docs)
+        
+        # Refine query for next iteration
+        refined_query = llm.invoke(
+            f"Original query: {query}\n"
+            f"Current context: {context}\n"
+            f"What additional information is needed?\n"
+            f"Generate a refined search query."
+        ).content
+        
+        # Check if we have enough information
+        if sufficient_information(query, context):
+            return generate_response(query, context)
+    
+    return generate_response(query, context)
+```
+
+### 13.6 ChromaDB Integration
+
+**ChromaDB** is the vector database used in our system:
+
+```python
+from langchain.vectorstores import Chroma
+from langchain.embeddings import OpenAIEmbeddings
+
+# Initialize
+embeddings = OpenAIEmbeddings()
+vector_store = Chroma(
+    collection_name="professional_docs",
+    embedding_function=embeddings,
+    persist_directory="./chroma_db"
+)
+
+# Add documents
+vector_store.add_documents(documents)
+
+# Search
+results = vector_store.similarity_search(
+    "What is agent orchestration?",
+    k=5
+)
+
+# With metadata filtering
+results = vector_store.similarity_search(
+    "agent patterns",
+    k=5,
+    filter={"agent": "professional", "date": {"$gte": "2024-01-01"}}
+)
+```
+
+### 13.7 Document Chunking Strategies
+
+Proper chunking is critical for RAG quality:
+
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+# Recursive chunking (respects structure)
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200,
+    separators=["\n\n", "\n", ". ", " ", ""]
+)
+
+chunks = text_splitter.split_documents(documents)
+
+# Semantic chunking (preserves meaning)
+from langchain.text_splitter import SemanticChunker
+
+semantic_splitter = SemanticChunker(
+    embeddings=OpenAIEmbeddings(),
+    breakpoint_threshold_type="percentile",  # or "standard_deviation"
+    breakpoint_threshold_amount=85
+)
+
+semantic_chunks = semantic_splitter.split_documents(documents)
+```
+
+**Best Practices:**
+- Chunk size: 500-1500 tokens (balance between context and precision)
+- Overlap: 10-20% of chunk size (preserves context at boundaries)
+- Respect document structure (paragraphs, sections)
+- Include metadata (source, date, author)
+
+### 13.8 RAG Evaluation Metrics
+
+```python
+def evaluate_rag_quality(query: str, retrieved_docs: list, answer: str):
+    """
+    Evaluates RAG system on multiple dimensions.
+    """
+    metrics = {}
+    
+    # Relevance: Are retrieved docs relevant to query?
+    metrics["relevance"] = calculate_relevance(query, retrieved_docs)
+    
+    # Coverage: Do docs cover all aspects of query?
+    metrics["coverage"] = calculate_coverage(query, retrieved_docs)
+    
+    # Faithfulness: Is answer grounded in retrieved docs?
+    metrics["faithfulness"] = calculate_faithfulness(answer, retrieved_docs)
+    
+    # Answer Relevance: Does answer address the query?
+    metrics["answer_relevance"] = calculate_answer_relevance(query, answer)
+    
+    return metrics
+```
+
+---
+
+## 14. IMPLEMENTATION PATTERNS FROM PRODUCTION
+
+This section captures patterns learned from building our multi-agent orchestration system.
+
+### 14.1 Shared Memory Pattern
+
+**Problem**: Multiple agents need access to full conversation history for context-aware responses.
+
+**Solution**: All agents read from shared conversation history stored in persistent database.
+
+```python
+def get_agent_context(conversation_id: str, agent: str) -> list[BaseMessage]:
+    """
+    Retrieves conversation history for agent execution.
+    
+    Args:
+        conversation_id: Unique conversation identifier
+        agent: Agent name (for filtering if needed)
+    
+    Returns:
+        Last 10 messages from ALL agents in conversation
+    """
+    messages = db.query(Message).filter(
+        Message.conversation_id == conversation_id
+    ).order_by(Message.created_at.desc()).limit(10).all()
+    
+    # Convert to LangChain messages
+    return [
+        HumanMessage(content=msg.content) if msg.role == "user"
+        else AIMessage(content=msg.content)
+        for msg in reversed(messages)
+    ]
+```
+
+**Benefits:**
+- Agents see messages from other agents
+- Conversation continuity across agent switches
+- Router makes better decisions with full context
+
+**Trade-offs:**
+- Increased token usage (10 messages * avg 100 tokens = 1000 tokens)
+- Requires database read per request
+- Potential privacy concerns if agents shouldn't see all history
+
+### 14.2 Router Context Window Pattern
+
+**Problem**: Router needs recent context for routing decisions, but not full history.
+
+**Solution**: Use smaller context window (last 5 messages) for router, full history (last 10) for agents.
+
+```python
+class RouterAgent:
+    def route(self, query: str, conversation_id: str) -> tuple[str, float, str]:
+        # Router sees last 5 messages
+        context = get_conversation_context(conversation_id, limit=5)
+        
+        prompt = f"""
+        Conversation history (last 5 messages):
+        {format_messages(context)}
+        
+        New query: {query}
+        
+        Which agent should handle this query?
+        """
+        
+        response = self.llm.invoke(prompt)
+        return parse_routing_response(response)
+
+class ProfessionalAgent:
+    def execute(self, query: str, conversation_id: str) -> str:
+        # Agent sees last 10 messages
+        history = get_conversation_context(conversation_id, limit=10)
+        
+        # RAG retrieval
+        docs = retrieve_documents(query, agent="professional")
+        
+        # Generate with full context
+        response = self.llm.invoke(
+            build_prompt(query, history, docs)
+        )
+        
+        return response
+```
+
+**Benefits:**
+- Faster routing (less tokens to process)
+- Cost optimization (router called more frequently)
+- Agents get full context for quality responses
+
+### 14.3 Confidence-Based Retry Pattern
+
+**Problem**: Low-confidence routing decisions lead to poor responses.
+
+**Solution**: Automatically retry routing when confidence < threshold.
+
+```python
+def should_continue(state: AgentState) -> Literal["continue", "end"]:
+    """
+    Implements confidence-based retry logic.
+    """
+    # Max iterations check
+    if state["iterations"] >= state["max_iterations"]:
+        log_iteration(state, "Stopped: Max iterations reached")
+        return "end"
+    
+    # Low confidence retry (max 2 iterations)
+    if state["routing_confidence"] < 0.7 and state["iterations"] < 2:
+        log_iteration(state, f"Continuing: Low confidence retry (conf={state['routing_confidence']})")
+        return "continue"
+    
+    return "end"
+```
+
+**Benefits:**
+- Automatic quality improvement
+- Self-correcting system
+- No manual intervention needed
+
+**Configuration:**
+- Threshold: 0.7 (70%)
+- Max retries: 2 (prevents excessive iteration)
+- Alternative: Try different agent on retry
+
+### 14.4 Continuation Signal Pattern
+
+**Problem**: Agent indicates more work needed but system ends after single response.
+
+**Solution**: Detect continuation keywords in agent response and iterate.
+
+```python
+CONTINUATION_SIGNALS = [
+    "let me", "i'll also", "additionally", "furthermore",
+    "i can also", "would you like", "shall i"
+]
+
+def should_continue(state: AgentState) -> Literal["continue", "end"]:
+    if state["iterations"] >= 3:  # Max 3 iterations for continuations
+        return "end"
+    
+    last_message = state["messages"][-1].content.lower()
+    
+    if any(signal in last_message for signal in CONTINUATION_SIGNALS):
+        log_iteration(state, "Continuing: Agent signaled more work")
+        return "continue"
+    
+    return "end"
+```
+
+**Real Example:**
+
+```
+User: "What should I do about my career?"
+Agent (Iter 1): "Let me break this down... [analysis]"
+              ^^^ Contains "let me" - triggers continuation
+Agent (Iter 2): "Based on that analysis, I'll also consider... [additional insights]"
+              ^^^ Contains "I'll also" - triggers continuation  
+Agent (Iter 3): "Here's my final recommendation..."
+              ^^^ No signal - ends workflow
+```
+
+### 14.5 Iteration Logging Pattern
+
+**Problem**: Difficult to debug multi-iteration workflows without detailed logs.
+
+**Solution**: Log every state transition with metadata.
+
+```python
+@dataclass
+class IterationLog:
+    iteration: int
+    agent: str
+    action: str
+    confidence: float
+    reasoning: str
+    timestamp: datetime
+
+def router_node(state: AgentState) -> AgentState:
+    agent_name, confidence, reasoning = route_query(state["messages"][-1])
+    
+    # Log routing decision
+    state["iteration_log"].append(IterationLog(
+        iteration=state["iterations"] + 1,
+        agent="router",
+        action=f"Routed to {agent_name}",
+        confidence=confidence,
+        reasoning=reasoning,
+        timestamp=datetime.now()
+    ))
+    
+    return state
+
+def agent_wrapper(agent_func):
+    def wrapped(state: AgentState) -> AgentState:
+        # Execute agent
+        state = agent_func(state)
+        
+        # Log execution
+        state["iteration_log"].append(IterationLog(
+            iteration=state["iterations"],
+            agent=agent_func.__name__,
+            action="Generated response",
+            confidence=state["routing_confidence"],
+            reasoning=state["messages"][-1].content[:100],
+            timestamp=datetime.now()
+        ))
+        
+        return state
+    
+    return wrapped
+```
+
+**Frontend Display:**
+
+```
+Iteration Log:
+  #1 ROUTER ················· 85%
+  Routed to decision
+  User seeking guidance on choice with trade-offs
+  
+  #1 DECISION ················ 85%
+  Generated response
+  To provide thoughtful recommendation...
+  
+  #2 ROUTER ················· 93%
+  Routed to decision
+  Re-evaluated with higher confidence
+  
+  #2 DECISION ················ 93%
+  Generated response
+  Based on your situation...
+```
+
+### 14.6 Domain-Specific RAG Pattern
+
+**Problem**: Single knowledge base doesn't match specialized agent needs.
+
+**Solution**: Each agent has dedicated document collection plus shared knowledge.
+
+```python
+# Store documents by domain
+def ingest_document(document: Document, domain: str):
+    """
+    Ingests document into domain-specific collection.
+    
+    Args:
+        document: LangChain document
+        domain: "professional", "communication", etc.
+    """
+    collection_name = AGENT_DOMAINS[domain]
+    
+    vector_store.add_documents(
+        [document],
+        collection_name=collection_name,
+        ids=[str(uuid4())]
+    )
+
+# Retrieve with domain isolation
+def retrieve_for_agent(query: str, agent: str) -> list[Document]:
+    """
+    Retrieves documents from agent-specific and shared collections.
+    """
+    agent_docs = vector_store.similarity_search(
+        query,
+        collection_name=AGENT_DOMAINS[agent],
+        k=5
+    )
+    
+    shared_docs = vector_store.similarity_search(
+        query,
+        collection_name="shared_docs",
+        k=2
+    )
+    
+    return agent_docs + shared_docs
+```
+
+**Benefits:**
+- Better retrieval precision (domain-specific documents)
+- Reduced noise (agent doesn't see irrelevant docs)
+- Shared knowledge still accessible
+- Scales to many agents
+
+### 14.7 Response Deduplication Pattern
+
+**Problem**: LangGraph state duplication causes repeated iteration logs.
+
+**Solution**: Deduplicate based on unique key before returning to API.
+
+```python
+def deduplicate_iteration_log(iteration_log: list[IterationLog]) -> list[IterationLog]:
+    """
+    Removes duplicate iteration log entries.
+    
+    Duplicates occur due to LangGraph state copying.
+    We deduplicate based on (iteration, agent, action) tuple.
+    """
+    seen = set()
+    unique_logs = []
+    
+    for log in iteration_log:
+        key = (log.iteration, log.agent, log.action)
+        if key not in seen:
+            seen.add(key)
+            unique_logs.append(log)
+    
+    return unique_logs
+
+# In API endpoint
+iteration_details = deduplicate_iteration_log(final_state["iteration_log"])
+```
+
+**Why This Happens:**
+- LangGraph creates state copy for each node
+- Iteration log gets duplicated during state merging
+- Deduplication happens at API layer (not in graph)
+
+### 14.8 Type-Safe State Pattern
+
+**Problem**: Runtime errors from incorrect state field types.
+
+**Solution**: Use Pydantic or TypedDict for compile-time validation.
+
+```python
+from typing import TypedDict, Annotated
+from langgraph.graph.message import add_messages
+
+class AgentState(TypedDict):
+    """Type-safe state definition"""
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    current_agent: str
+    iterations: int
+    max_iterations: int
+    should_continue: bool
+    routing_confidence: float
+    routing_history: list[RoutingDecision]
+    iteration_log: list[IterationLog]
+    session_id: str
+
+# Type checker catches errors
+def my_node(state: AgentState) -> AgentState:
+    # ✅ Valid
+    state["iterations"] = state["iterations"] + 1
+    
+    # ❌ Type error caught by mypy/pyright
+    state["iterations"] = "five"
+    
+    return state
+```
+
+**Benefits:**
+- Catch errors before runtime
+- IDE autocomplete for state fields
+- Self-documenting code
+- Refactoring safety
+
+### 14.9 Graceful Fallback Pattern
+
+**Problem**: LLM-based router can fail or return invalid agent name.
+
+**Solution**: Keyword-based fallback when LLM routing fails.
+
+```python
+def router_agent_with_fallback(query: str) -> tuple[str, float, str]:
+    """
+    Routes query to appropriate agent with fallback.
+    
+    Returns:
+        (agent_name, confidence, reasoning)
+    """
+    try:
+        # Try LLM-based routing
+        response = llm.invoke(ROUTING_PROMPT.format(query=query))
+        agent, confidence, reasoning = parse_routing_response(response)
+        
+        # Validate agent name
+        if agent not in VALID_AGENTS:
+            raise ValueError(f"Invalid agent: {agent}")
+        
+        return agent, confidence, f"LLM: {reasoning}"
+    
+    except Exception as e:
+        # Fallback to keyword matching
+        logger.warning(f"LLM routing failed: {e}, using fallback")
+        agent, confidence = keyword_based_routing(query)
+        return agent, confidence, f"Fallback: Keyword matching"
+
+def keyword_based_routing(query: str) -> tuple[str, float]:
+    """Simple keyword-based routing as fallback"""
+    query_lower = query.lower()
+    
+    if any(kw in query_lower for kw in ["email", "presentation", "meeting"]):
+        return "communication", 0.8
+    elif any(kw in query_lower for kw in ["decide", "choice", "should i"]):
+        return "decision", 0.8
+    elif any(kw in query_lower for kw in ["explain", "what is", "how does"]):
+        return "knowledge", 0.8
+    elif any(kw in query_lower for kw in ["code", "technical", "implement"]):
+        return "professional", 0.8
+    else:
+        return "general", 0.6
+```
+
+### 14.10 Frontend-Backend Contract Pattern
+
+**Problem**: Frontend expects specific response structure, changes break UI.
+
+**Solution**: Use Pydantic models for API responses with versioning.
+
+```python
+from pydantic import BaseModel, Field
+
+class IterationDetail(BaseModel):
+    """Detail about single iteration step"""
+    iteration: int = Field(..., description="Iteration number (1-based)")
+    agent: str = Field(..., description="Agent that executed")
+    action: str = Field(..., description="What happened")
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    reasoning: Optional[str] = Field(None, description="Why this happened")
+    timestamp: datetime
+
+class ChatResponse(BaseModel):
+    """Response from /api/chat endpoint"""
+    response: str = Field(..., description="Final response text")
+    agent_used: str = Field(..., description="Primary agent")
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    session_id: str
+    conversation_id: Optional[str] = None
+    
+    # New: Iteration details (replaces routing_history)
+    iteration_details: list[IterationDetail] = Field(
+        default_factory=list,
+        description="Detailed log of iterations"
+    )
+    
+    # Deprecated but kept for backwards compatibility
+    routing_history: list[AgentExecution] = Field(
+        default_factory=list,
+        description="DEPRECATED: Use iteration_details instead"
+    )
+    
+    iterations: int = Field(..., description="Total iterations")
+    processing_time_ms: float
+
+# FastAPI automatically validates and documents
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
+    # ... implementation
+    return ChatResponse(...)
+```
+
+**Benefits:**
+- Automatic validation (400 errors on invalid data)
+- OpenAPI/Swagger documentation
+- Type hints for frontend developers
+- Backwards compatibility through deprecated fields
+
+---

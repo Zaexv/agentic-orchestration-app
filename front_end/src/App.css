@@ -373,7 +373,7 @@ canvas {
 /* Trace Panel */
 .trace-panel {
   margin-top: 1rem;
-  padding: 1rem;
+  padding: 1.25rem;
   background: var(--bg-dark);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -385,6 +385,24 @@ canvas {
 
 .trace-section:last-child {
   margin-bottom: 0;
+}
+
+.trace-section-main {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.trace-metadata {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.trace-section-compact {
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 150px;
 }
 
 .trace-label {
@@ -437,35 +455,45 @@ canvas {
 .trace-iterations {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.875rem;
 }
 
 .iteration-item {
-  padding: 0.75rem;
+  padding: 1rem;
   background: var(--bg-hover);
-  border-radius: 6px;
-  border-left: 3px solid var(--accent-cyan);
+  border-radius: 8px;
+  border-left: 4px solid var(--accent-cyan);
+  transition: all 0.2s ease;
+}
+
+.iteration-item:hover {
+  background: var(--bg-card);
+  transform: translateX(2px);
 }
 
 .iteration-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .iteration-number {
   color: var(--accent-cyan);
   font-weight: 700;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-family: 'Monaco', 'Menlo', monospace;
+  padding: 0.2rem 0.5rem;
+  background: rgba(79, 158, 255, 0.1);
+  border-radius: 4px;
 }
 
 .iteration-agent {
   color: var(--accent-blue);
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
 }
 
 .iteration-confidence {
@@ -473,20 +501,27 @@ canvas {
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 0.75rem;
   margin-left: auto;
+  padding: 0.2rem 0.5rem;
+  background: rgba(0, 217, 255, 0.1);
+  border-radius: 4px;
 }
 
 .iteration-action {
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 500;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.4rem;
+  line-height: 1.4;
 }
 
 .iteration-reasoning {
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-style: italic;
-  margin-top: 0.3rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  line-height: 1.5;
 }
 
 /* Thinking Process */
@@ -845,4 +880,55 @@ canvas {
   background: var(--bg-card);
   color: var(--text-primary);
   padding: 0.5rem;
+}
+
+/* Math Rendering (KaTeX) */
+.katex {
+  font-size: 1.1em;
+}
+
+.katex-display {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--bg-hover);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent-cyan);
+  overflow-x: auto;
+}
+
+.katex-display > .katex {
+  text-align: center;
+}
+
+/* Inline math */
+.katex-inline {
+  padding: 0.2rem 0.4rem;
+  background: rgba(79, 158, 255, 0.1);
+  border-radius: 4px;
+}
+
+/* Math in messages */
+.message-content .katex {
+  color: var(--text-primary);
+}
+
+.message-content .katex-display {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Math symbols styling */
+.katex .mord {
+  color: var(--text-primary);
+}
+
+.katex .mbin, .katex .mrel {
+  color: var(--accent-cyan);
+}
+
+.katex .mfrac {
+  color: var(--text-primary);
+}
+
+.katex .mfrac > span {
+  border-color: var(--accent-blue);
 }

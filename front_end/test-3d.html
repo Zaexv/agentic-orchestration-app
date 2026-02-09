@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Test</title>
+  <style>
+    body {
+      background: #0a0e27;
+      color: white;
+      font-family: system-ui;
+      padding: 2rem;
+    }
+    .container {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .test-box {
+      width: 200px;
+      padding: 1rem;
+      background: #1a1f3a;
+      border: 1px solid #2d3551;
+      border-radius: 8px;
+    }
+    .face-container {
+      width: 70px;
+      height: 70px;
+      background: #252b47;
+      border: 2px solid #4f9eff;
+      border-radius: 8px;
+      margin: 1rem auto;
+    }
+    canvas {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+  </style>
+</head>
+<body>
+  <h1>3D Face Test</h1>
+  <p>If you see this page, the CSS is loading correctly.</p>
+  <div class="container">
+    <div class="test-box">
+      <h3>Test Box 1</h3>
+      <div class="face-container">
+        <p style="font-size: 10px; text-align: center;">70x70px</p>
+      </div>
+    </div>
+    <div class="test-box">
+      <h3>Test Box 2</h3>
+      <div class="face-container">
+        <p style="font-size: 10px; text-align: center;">3D would go here</p>
+      </div>
+    </div>
+  </div>
+  
+  <h2>Debugging Info</h2>
+  <pre id="debug"></pre>
+  
+  <script>
+    const debug = document.getElementById('debug');
+    debug.textContent = `
+Browser: ${navigator.userAgent}
+Screen: ${window.innerWidth}x${window.innerHeight}
+CSS Support: ${CSS && CSS.supports ? 'YES' : 'NO'}
+WebGL: ${(() => {
+  try {
+    const canvas = document.createElement('canvas');
+    return !!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+  } catch(e) {
+    return false;
+  }
+})() ? 'SUPPORTED' : 'NOT SUPPORTED'}
+    `;
+  </script>
+</body>
+</html>

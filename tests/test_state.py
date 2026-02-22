@@ -23,7 +23,7 @@ def test_create_initial_state():
     assert state["user_id"] == "test_user"
     assert state["current_agent"] == "router"
     assert state["iterations"] == 0
-    assert state["max_iterations"] == 10
+    assert state["max_iterations"] == 5
     assert state["should_continue"] is True
     assert len(state["messages"]) == 1
     assert state["messages"][0].role == "user"

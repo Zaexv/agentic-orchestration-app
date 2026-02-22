@@ -72,9 +72,12 @@ async def chat_with_graph(request: ChatRequest) -> ChatResponse:
         max_iterations=request.max_iterations
     )
     
-    # Run through the graph workflow
+    # Run through the graph workflow with session_id as thread_id for checkpointing
     try:
-        final_state = run_workflow(state)
+        # Use session_id as the thread_id to enable conversation memory
+        # This allows the graph to retrieve and persist state across requests
+        thread_id = request.conversation_id or state["session_id"]
+        final_state = run_workflow(state, thread_id=thread_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
     
@@ -173,7 +176,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
     
     # Run through LangGraph workflow (enables multi-iteration!)
     try:
-        final_state = run_workflow(state)
+        # Use conversation_id as thread_id for persistent conversation memory
+        thread_id = conversation.id
+        final_state = run_workflow(state, thread_id=thread_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
     

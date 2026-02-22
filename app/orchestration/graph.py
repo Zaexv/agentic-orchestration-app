@@ -4,8 +4,11 @@ This module defines the StateGraph that orchestrates routing and execution
 of specialized agents using LangGraph's graph-based workflow system.
 """
 
+import sqlite3
 from typing import Literal
+from pathlib import Path
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from app.orchestration.state import AgentState, increment_iteration, update_routing
 from app.agents.router import router_agent_with_fallback
@@ -224,7 +227,7 @@ def agent_wrapper(agent_func):
     return wrapped
 
 
-def create_workflow() -> StateGraph:
+def create_workflow(checkpointer=None) -> StateGraph:
     """
     Create and configure the LangGraph workflow.
     
@@ -233,6 +236,9 @@ def create_workflow() -> StateGraph:
                   ↑                           ↓
                   └───────────────────────────┘
                          (loop for multi-turn)
+    
+    Args:
+        checkpointer: Optional checkpointer for state persistence (e.g., SqliteSaver)
     
     Returns:
         Compiled StateGraph ready for execution
@@ -275,22 +281,44 @@ def create_workflow() -> StateGraph:
             }
         )
     
-    # Compile the graph
-    return workflow.compile()
+    # Compile the graph with optional checkpointer
+    return workflow.compile(checkpointer=checkpointer)
 
 
-# Create the compiled workflow (singleton)
-workflow_app = create_workflow()
+# Initialize checkpointer with SQLite database
+# Store checkpoints in data/database/checkpoints.db for conversation state persistence
+import os
+from pathlib import Path
+
+# Ensure data/database directory exists
+checkpoint_dir = Path("data/database")
+checkpoint_dir.mkdir(parents=True, exist_ok=True)
+checkpoint_db = checkpoint_dir / "checkpoints.db"
+
+# Create checkpointer with a direct sqlite3 connection
+import sqlite3
+checkpointer = SqliteSaver(sqlite3.connect(str(checkpoint_db), check_same_thread=False))
+
+# Create the compiled workflow with checkpointer (singleton)
+workflow_app = create_workflow(checkpointer=checkpointer)
 
 
-def run_workflow(state: AgentState) -> AgentState:
+def run_workflow(state: AgentState, thread_id: str = None) -> AgentState:
     """
     Execute the workflow with the given initial state.
     
     Args:
         state: Initial agent state
+        thread_id: Optional thread ID for checkpointing (enables conversation memory)
+                  If not provided, uses session_id from state as default thread_id
         
     Returns:
         Final state after workflow execution
     """
-    return workflow_app.invoke(state)
+    # Always provide a thread_id when checkpointer is configured
+    # Use provided thread_id, or fall back to session_id from state
+    if not thread_id:
+        thread_id = state.get("session_id", "default-thread")
+    
+    config = {"configurable": {"thread_id": thread_id}}
+    return workflow_app.invoke(state, config=config)

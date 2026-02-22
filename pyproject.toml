@@ -25,29 +25,25 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.7.0",
-    
     # LangChain Ecosystem
     "langchain>=0.3.0",
     "langchain-openai>=0.3.0",
     "langchain-community>=0.3.0",
     "langgraph>=0.2.0",
     "langsmith>=0.1.17",
-    
     # FastAPI & Server
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
     "python-multipart>=0.0.9",
-    
     # Vector Stores
     "chromadb>=0.4.24",
-    
     # Embeddings & Models
     "openai>=1.58.1",
     "tiktoken>=0.7",
-    
     # Utilities
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",
+    "langgraph-checkpoint-sqlite>=3.0.3",
 ]
 
 [project.optional-dependencies]

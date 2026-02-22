@@ -25,6 +25,7 @@ This project implements a **production-ready AI-powered digital twin** with **5 
 - 🎯 **Intelligent Routing** - 95% accuracy with LLM-based semantic understanding
 - 🤖 **5 Specialized Agents** - Professional, Communication, Knowledge, Decision, General
 - 📊 **StateGraph Workflow** - Visual graph-based orchestration with LangGraph
+- 💾 **Conversation Memory** - LangGraph checkpointing with SQLite for persistent state
 - 🔍 **RAG System** - Retrieval-Augmented Generation with ChromaDB
 - 💾 **Persistent Conversations** - SQLite database with full history
 - 🔄 **Multi-Iteration Processing** - Automatic retry on low confidence, up to 5 iterations
@@ -98,6 +99,7 @@ npm run dev
 |----------|-------------|
 | [**Architecture**](./docs/ARCHITECTURE.md) | System architecture with Mermaid diagrams |
 | [**Deployment**](./docs/DEPLOYMENT.md) | Docker, cloud, and manual deployment |
+| [**Checkpointing**](./docs/CHECKPOINTING.md) | Conversation memory and state persistence |
 | [**Shared Memory**](./docs/SHARED_MEMORY.md) | How agents share conversation history |
 | [**Multi-Iteration**](./docs/MULTI_ITERATION.md) | Multi-iteration processing logic |
 | [**Iteration Tests**](./docs/ITERATION_TEST_PROMPTS.md) | Test prompts for iteration system |

@@ -49,6 +49,9 @@ data/documents/**/*
 !data/documents/**/.gitkeep
 data/vector_stores/**/*
 !data/vector_stores/.gitkeep
+data/database/checkpoints.db
+data/database/checkpoints.db-shm
+data/database/checkpoints.db-wal
 
 # Logs
 *.log

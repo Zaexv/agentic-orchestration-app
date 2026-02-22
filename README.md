@@ -25,7 +25,7 @@ This project implements a **production-ready AI-powered digital twin** with **5 
 - 🎯 **Intelligent Routing** - 95% accuracy with LLM-based semantic understanding
 - 🤖 **5 Specialized Agents** - Professional, Communication, Knowledge, Decision, General
 - 📊 **StateGraph Workflow** - Visual graph-based orchestration with LangGraph
-- 💾 **Conversation Memory** - LangGraph checkpointing with SQLite for persistent state
+- 💾 **Conversation Memory** - LangGraph checkpointing with SQLite for persistent state (size-limited for efficiency)
 - 🔍 **RAG System** - Retrieval-Augmented Generation with ChromaDB
 - 💾 **Persistent Conversations** - SQLite database with full history
 - 🔄 **Multi-Iteration Processing** - Automatic retry on low confidence, up to 5 iterations

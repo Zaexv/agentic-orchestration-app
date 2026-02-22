@@ -25,7 +25,7 @@ from app.orchestration.state import (
     RoutingDecision,
     create_initial_state,
 )
-from app.orchestration.graph import run_workflow
+from app.orchestration.graph import run_workflow, workflow_app
 from app.agents import (
     general_agent,
     professional_agent,
@@ -54,30 +54,49 @@ async def chat_with_graph(request: ChatRequest) -> ChatResponse:
     
     Uses the StateGraph workflow for routing and execution, enabling:
     - Visual workflow representation
-    - Multi-turn conversations (future)
-    - Agent-to-agent handoffs (future)
+    - Multi-turn conversations (with checkpointing)
+    - Agent-to-agent handoffs
     - Better debugging with LangGraph Studio
     
     Flow:
-    1. Create initial state
-    2. Run through compiled StateGraph workflow
-    3. Return final response
+    1. Check if continuing existing conversation (via thread_id/conversation_id)
+    2. If continuing: only pass new message as state update
+    3. If new: create full initial state
+    4. Run through compiled StateGraph workflow
+    5. Return final response
     """
     start_time = time.time()
     
-    # Create initial state
-    state = create_initial_state(
-        user_query=request.message,
-        user_id=request.user_id,
-        max_iterations=request.max_iterations
-    )
+    # Determine thread_id for checkpointing
+    thread_id = request.conversation_id or f"session-{datetime.now().timestamp()}"
+    config = {"configurable": {"thread_id": thread_id}}
     
-    # Run through the graph workflow with session_id as thread_id for checkpointing
+    # Check if we have an existing checkpoint for this thread
     try:
-        # Use session_id as the thread_id to enable conversation memory
-        # This allows the graph to retrieve and persist state across requests
-        thread_id = request.conversation_id or state["session_id"]
-        final_state = run_workflow(state, thread_id=thread_id)
+        # Try to get the last checkpoint state
+        checkpoint = workflow_app.get_state(config)
+        existing_state = checkpoint.values if checkpoint and checkpoint.values else None
+    except Exception:
+        existing_state = None
+    
+    # Prepare state input
+    if existing_state:
+        # Continuing conversation: only add the new user message
+        # LangGraph will merge this with the checkpoint state
+        state_input = {
+            "messages": [Message(role="user", content=request.message, timestamp=datetime.now())]
+        }
+    else:
+        # New conversation: create full initial state
+        state_input = create_initial_state(
+            user_query=request.message,
+            user_id=request.user_id,
+            max_iterations=request.max_iterations
+        )
+    
+    # Run through the graph workflow with thread_id for checkpointing
+    try:
+        final_state = workflow_app.invoke(state_input, config=config)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
     
@@ -97,7 +116,7 @@ async def chat_with_graph(request: ChatRequest) -> ChatResponse:
         response=agent_response,
         agent_used=agent_used,
         confidence=confidence,
-        session_id=final_state["session_id"],
+        session_id=final_state.get("session_id", thread_id),
         routing_history=[
             AgentExecution(
                 agent_name=rd.target_agent,
@@ -154,17 +173,34 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
         db_messages = ConversationService.get_conversation_messages(db, conversation.id)
         history_messages = ConversationService.messages_to_state_format(db_messages)
     
-    # Create initial state for workflow
-    state = create_initial_state(
-        user_query=request.message,
-        user_id=request.user_id,
-        session_id=request.session_id,
-        max_iterations=request.max_iterations
-    )
+    # Prepare state for workflow with checkpointing
+    thread_id = conversation.id
+    config = {"configurable": {"thread_id": thread_id}}
     
-    # Add conversation history to state
-    if history_messages:
-        state["messages"] = history_messages + state["messages"]
+    # Check if we have an existing checkpoint
+    try:
+        checkpoint = workflow_app.get_state(config)
+        existing_state = checkpoint.values if checkpoint and checkpoint.values else None
+    except Exception:
+        existing_state = None
+    
+    # Prepare state input
+    if existing_state:
+        # Continuing conversation: only add the new user message
+        state_input = {
+            "messages": [Message(role="user", content=request.message, timestamp=datetime.now())]
+        }
+    else:
+        # New conversation: create full initial state
+        state_input = create_initial_state(
+            user_query=request.message,
+            user_id=request.user_id,
+            session_id=request.session_id,
+            max_iterations=request.max_iterations
+        )
+        # Add database conversation history if available
+        if history_messages:
+            state_input["messages"] = history_messages + state_input["messages"]
     
     # Save user message to database
     ConversationService.add_message(
@@ -176,9 +212,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
     
     # Run through LangGraph workflow (enables multi-iteration!)
     try:
-        # Use conversation_id as thread_id for persistent conversation memory
-        thread_id = conversation.id
-        final_state = run_workflow(state, thread_id=thread_id)
+        final_state = workflow_app.invoke(state_input, config=config)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
     

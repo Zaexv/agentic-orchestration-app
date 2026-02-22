@@ -11,6 +11,47 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+# Configuration for maximum sizes to prevent checkpoint bloat
+MAX_MESSAGES = 100  # Keep last 100 messages
+MAX_ROUTING_HISTORY = 50  # Keep last 50 routing decisions
+MAX_ITERATION_LOG = 100  # Keep last 100 iteration logs
+
+
+def add_and_limit(existing: list, new: list, max_size: int) -> list:
+    """
+    Custom reducer that adds items to list but keeps only the last max_size items.
+    
+    This prevents unbounded growth in checkpoint database by limiting accumulation.
+    
+    Args:
+        existing: Existing list of items
+        new: New items to add
+        max_size: Maximum number of items to keep
+        
+    Returns:
+        Combined list limited to max_size most recent items
+    """
+    combined = existing + new
+    if len(combined) > max_size:
+        return combined[-max_size:]
+    return combined
+
+
+def add_messages(existing: list, new: list) -> list:
+    """Reducer for messages - keeps last MAX_MESSAGES"""
+    return add_and_limit(existing, new, MAX_MESSAGES)
+
+
+def add_routing_history(existing: list, new: list) -> list:
+    """Reducer for routing history - keeps last MAX_ROUTING_HISTORY"""
+    return add_and_limit(existing, new, MAX_ROUTING_HISTORY)
+
+
+def add_iteration_log(existing: list, new: list) -> list:
+    """Reducer for iteration log - keeps last MAX_ITERATION_LOG"""
+    return add_and_limit(existing, new, MAX_ITERATION_LOG)
+
+
 class Message(BaseModel):
     """Message model for conversation history"""
     role: str = Field(..., description="Role: 'user', 'assistant', or 'system'")
@@ -50,21 +91,25 @@ class AgentState(TypedDict):
     Central state object shared across all agents in the graph.
     
     Uses Annotated with reducers to control how state is updated:
-    - add: Accumulates items into a list
+    - add_messages: Accumulates messages, keeps last MAX_MESSAGES (100)
+    - add_routing_history: Accumulates routing history, keeps last MAX_ROUTING_HISTORY (50)
+    - add_iteration_log: Accumulates iteration logs, keeps last MAX_ITERATION_LOG (100)
     - replace (default): Overwrites the previous value
+    
+    Size limits prevent checkpoint database bloat by ensuring bounded accumulation.
     """
     
-    # Conversation History (accumulated)
-    messages: Annotated[list[Message], add]
+    # Conversation History (accumulated with size limit)
+    messages: Annotated[list[Message], add_messages]
     
     # Routing Information (replaced)
     current_agent: str  # Current executing agent
     next_agent: Optional[str]  # Next agent to route to
-    routing_history: Annotated[list[RoutingDecision], add]  # History of routing decisions
+    routing_history: Annotated[list[RoutingDecision], add_routing_history]  # History of routing decisions (limited)
     routing_confidence: float  # Confidence of current routing decision
     
-    # Iteration Tracking (accumulated)
-    iteration_log: Annotated[list[IterationLog], add]  # What happened in each iteration
+    # Iteration Tracking (accumulated with size limit)
+    iteration_log: Annotated[list[IterationLog], add_iteration_log]  # What happened in each iteration (limited)
     
     # Retrieved Context (replaced per query)
     retrieved_docs: list[RetrievedDocument]  # Documents from RAG
